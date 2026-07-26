@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "failure_record.schema.json",
+  "type": "object",
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "stage1",
+        "stage2",
+        "aggregate",
+        "store_sync"
+      ]
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "openai",
+        "gemini",
+        "offline"
+      ]
+    },
+    "error_code": {
+      "type": "string",
+      "enum": [
+        "INPUT_MISSING_TITLE",
+        "INPUT_MISSING_BODY",
+        "INPUT_TOO_SHORT",
+        "PRODUCT_NOT_FOUND",
+        "PRODUCT_NAME_UNCLEAR",
+        "MULTI_PRODUCT",
+        "CONFLICTING_PRODUCT_TYPE_EVIDENCE",
+        "HFF_DB_NO_MATCH",
+        "HFF_DB_UNAVAILABLE",
+        "FILE_SEARCH_NOT_RUN",
+        "FILE_SEARCH_STORE_UNAVAILABLE",
+        "FILE_SEARCH_NO_RESULT",
+        "FILE_SEARCH_CITATION_MISSING",
+        "SEARCH_NO_RULE",
+        "SEARCH_NO_OFFICIAL_EVIDENCE",
+        "TRUNCATED_EVIDENCE",
+        "LEGAL_VERSION_UNVERIFIED",
+        "QUOTE_NOT_IN_SOURCE",
+        "RETRIEVED_ID_NOT_FOUND",
+        "EVIDENCE_CASE_TYPE_MISMATCH",
+        "JSON_SCHEMA_INVALID",
+        "RISK_SCORE_INVALID",
+        "RISK_AGGREGATION_MISMATCH",
+        "MODEL_REFUSAL_OR_EMPTY",
+        "PROVIDER_TIMEOUT",
+        "PROVIDER_MODEL_UNSUPPORTED"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "requires_human_review": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "record_id",
+    "stage",
+    "provider",
+    "error_code",
+    "message",
+    "retry_count",
+    "requires_human_review",
+    "created_at"
+  ],
+  "additionalProperties": false
+}

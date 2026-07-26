@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stage2_output.schema.json",
+  "type": "object",
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "product_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "product_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "product_type": {
+      "type": "string",
+      "enum": [
+        "HEALTH_FUNCTIONAL_FOOD",
+        "FOOD",
+        "FOOD_FALLBACK",
+        "OUT_OF_SCOPE",
+        "UNCERTAIN"
+      ]
+    },
+    "product_subtype": {
+      "type": "string",
+      "enum": [
+        "GENERAL_FOOD",
+        "FUNCTION_CLAIM_FOOD",
+        "SPECIAL_NUTRITION_FOOD",
+        "SPECIAL_MEDICAL_PURPOSE_FOOD",
+        "UNKNOWN_FOOD",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "problem_expressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "expression_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_field": {
+            "type": "string",
+            "enum": [
+              "title",
+              "body_text"
+            ]
+          },
+          "product_linked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expression_id",
+          "quote",
+          "source_field",
+          "product_linked"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "violation_reviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "violation_type": {
+            "type": "string",
+            "enum": [
+              "DISEASE_PREVENTION_TREATMENT",
+              "MEDICINE_CONFUSION",
+              "HFF_CONFUSION",
+              "UNAPPROVED_FUNCTION",
+              "FALSE_EXAGGERATED",
+              "CONSUMER_DECEPTION",
+              "INGREDIENT_TO_PRODUCT_EFFECT",
+              "TESTIMONIAL_EFFECT",
+              "EXPERT_ENDORSEMENT",
+              "COMPARISON_DEFAMATION"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "HIGH",
+              "REVIEW",
+              "LOW",
+              "NOT_DETECTED",
+              "INSUFFICIENT_EVIDENCE"
+            ]
+          },
+          "risk_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "expression_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rule_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "official_evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "case_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "score_factors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "score_reason": {
+            "type": "string"
+          },
+          "uncertainty_codes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "INPUT_MISSING_TITLE",
+                "INPUT_MISSING_BODY",
+                "INPUT_TOO_SHORT",
+                "PRODUCT_NOT_FOUND",
+                "PRODUCT_NAME_UNCLEAR",
+                "MULTI_PRODUCT",
+                "CONFLICTING_PRODUCT_TYPE_EVIDENCE",
+                "HFF_DB_NO_MATCH",
+                "HFF_DB_UNAVAILABLE",
+                "FILE_SEARCH_NOT_RUN",
+                "FILE_SEARCH_STORE_UNAVAILABLE",
+                "FILE_SEARCH_NO_RESULT",
+                "FILE_SEARCH_CITATION_MISSING",
+                "SEARCH_NO_RULE",
+                "SEARCH_NO_OFFICIAL_EVIDENCE",
+                "TRUNCATED_EVIDENCE",
+                "LEGAL_VERSION_UNVERIFIED",
+                "QUOTE_NOT_IN_SOURCE",
+                "RETRIEVED_ID_NOT_FOUND",
+                "EVIDENCE_CASE_TYPE_MISMATCH",
+                "JSON_SCHEMA_INVALID",
+                "RISK_SCORE_INVALID",
+                "RISK_AGGREGATION_MISMATCH",
+                "MODEL_REFUSAL_OR_EMPTY",
+                "PROVIDER_TIMEOUT",
+                "PROVIDER_MODEL_UNSUPPORTED"
+              ]
+            }
+          }
+        },
+        "required": [
+          "violation_type",
+          "status",
+          "risk_score",
+          "expression_ids",
+          "rule_ids",
+          "official_evidence_ids",
+          "case_ids",
+          "score_factors",
+          "score_reason",
+          "uncertainty_codes"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "product_overall_status": {
+      "type": "string",
+      "enum": [
+        "HIGH",
+        "REVIEW",
+        "LOW",
+        "NOT_DETECTED",
+        "INSUFFICIENT_EVIDENCE"
+      ]
+    },
+    "product_overall_risk_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "uncertainty_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "INPUT_MISSING_TITLE",
+          "INPUT_MISSING_BODY",
+          "INPUT_TOO_SHORT",
+          "PRODUCT_NOT_FOUND",
+          "PRODUCT_NAME_UNCLEAR",
+          "MULTI_PRODUCT",
+          "CONFLICTING_PRODUCT_TYPE_EVIDENCE",
+          "HFF_DB_NO_MATCH",
+          "HFF_DB_UNAVAILABLE",
+          "FILE_SEARCH_NOT_RUN",
+          "FILE_SEARCH_STORE_UNAVAILABLE",
+          "FILE_SEARCH_NO_RESULT",
+          "FILE_SEARCH_CITATION_MISSING",
+          "SEARCH_NO_RULE",
+          "SEARCH_NO_OFFICIAL_EVIDENCE",
+          "TRUNCATED_EVIDENCE",
+          "LEGAL_VERSION_UNVERIFIED",
+          "QUOTE_NOT_IN_SOURCE",
+          "RETRIEVED_ID_NOT_FOUND",
+          "EVIDENCE_CASE_TYPE_MISMATCH",
+          "JSON_SCHEMA_INVALID",
+          "RISK_SCORE_INVALID",
+          "RISK_AGGREGATION_MISMATCH",
+          "MODEL_REFUSAL_OR_EMPTY",
+          "PROVIDER_TIMEOUT",
+          "PROVIDER_MODEL_UNSUPPORTED"
+        ]
+      }
+    },
+    "requires_human_review": {
+      "type": "boolean"
+    },
+    "file_search": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "gemini",
+            "offline"
+          ]
+        },
+        "store_alias": {
+          "type": "string",
+          "enum": [
+            "FS01_PRODUCT_GATE",
+            "FS11_FOOD_REVIEW",
+            "FS21_HFF_REVIEW"
+          ]
+        },
+        "file_search_run": {
+          "type": "boolean"
+        },
+        "search_query": {
+          "type": "string"
+        },
+        "retrieved_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "record_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "file_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "source": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "page": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              }
+            },
+            "required": [
+              "record_id",
+              "file_name",
+              "source",
+              "page"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "provider",
+        "store_alias",
+        "file_search_run",
+        "search_query",
+        "retrieved_ids",
+        "citations",
+        "latency_ms"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "record_id",
+    "product_index",
+    "product_name",
+    "product_type",
+    "product_subtype",
+    "problem_expressions",
+    "violation_reviews",
+    "product_overall_status",
+    "product_overall_risk_score",
+    "uncertainty_codes",
+    "requires_human_review",
+    "file_search"
+  ],
+  "additionalProperties": false
+}

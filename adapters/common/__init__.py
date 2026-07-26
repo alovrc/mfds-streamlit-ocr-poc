@@ -1,0 +1,1 @@
+"""Common provider contracts."""
