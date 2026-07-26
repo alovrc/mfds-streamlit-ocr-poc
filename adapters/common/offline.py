@@ -37,6 +37,8 @@ def stage1(payload: dict[str, Any]) -> ProviderResult:
                         else "UNKNOWN_FOOD"
                     ),
                     "confidence": confidence,
+                    "food_confidence": 0.15 if hff_signal else 0.49,
+                    "hff_confidence": 0.72 if hff_signal else 0.20,
                     "analysis_target": True,
                     "evidence_ids": [],
                     "uncertainty_codes": uncertainty,

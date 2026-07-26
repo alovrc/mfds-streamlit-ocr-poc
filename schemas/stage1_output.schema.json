@@ -64,6 +64,16 @@
             "minimum": 0,
             "maximum": 1
           },
+          "food_confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "hff_confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
           "analysis_target": {
             "type": "boolean"
           },
@@ -114,6 +124,8 @@
           "product_type",
           "product_subtype",
           "confidence",
+          "food_confidence",
+          "hff_confidence",
           "analysis_target",
           "evidence_ids",
           "uncertainty_codes"

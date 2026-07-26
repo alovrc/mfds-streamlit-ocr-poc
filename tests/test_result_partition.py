@@ -23,6 +23,15 @@ def review(
 def output_with(*reviews: dict) -> dict:
     return {
         "record_id": "T-001",
+        "stage1": {
+            "products": [
+                {
+                    "product_index": 0,
+                    "food_confidence": 0.82,
+                    "hff_confidence": 0.18,
+                }
+            ]
+        },
         "product_results": [
             {
                 "product_index": 0,
@@ -50,6 +59,8 @@ def test_returns_only_detected_independent_findings() -> None:
     assert [
         item["violation_type"] for item in report["independent_findings"]
     ] == ["DISEASE_PREVENTION_TREATMENT", "HFF_CONFUSION"]
+    assert report["independent_findings"][0]["food_confidence"] == 0.82
+    assert report["independent_findings"][0]["hff_confidence"] == 0.18
 
 
 def test_report_contains_only_independent_review_fields() -> None:

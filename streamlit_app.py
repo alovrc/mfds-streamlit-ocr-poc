@@ -213,6 +213,8 @@ def render_independent_report(report: dict[str, Any]) -> None:
         rows = [
             {
                 "제품명": item["product_name"] or "-",
+                "식품 confidence": item["food_confidence"],
+                "건기식 confidence": item["hff_confidence"],
                 "위반 가능 항목": item["violation_label"],
                 "상태": item["status"],
                 "위험도": item["risk_score"],

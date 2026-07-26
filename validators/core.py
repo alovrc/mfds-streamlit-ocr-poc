@@ -69,9 +69,11 @@ def validate_stage1_links(stage1: dict[str, Any]) -> None:
     for product in stage1["products"]:
         if (
             product["product_type"] == "FOOD_FALLBACK"
-            and product["confidence"] > 0.49
+            and product["food_confidence"] >= 0.80
         ):
-            raise ContractValidationError("FOOD_FALLBACK confidence exceeds 0.49")
+            raise ContractValidationError(
+                "FOOD_FALLBACK food_confidence must be below 0.80"
+            )
 
 
 def validate_stage2_input(stage1: dict[str, Any], stage2_input: dict[str, Any]) -> None:

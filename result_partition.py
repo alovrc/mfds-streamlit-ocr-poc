@@ -23,12 +23,21 @@ ACTIVE_STATUSES = {"HIGH", "REVIEW", "LOW"}
 
 def _all_reviews(output: dict[str, Any]) -> list[dict[str, Any]]:
     reviews: list[dict[str, Any]] = []
+    stage1_products = {
+        item.get("product_index"): item
+        for item in output.get("stage1", {}).get("products", [])
+    }
     for product in output.get("product_results", []):
+        stage1_product = stage1_products.get(product.get("product_index"), {})
         for review in product.get("violation_reviews", []):
             reviews.append(
                 {
                     "product_index": product.get("product_index"),
                     "product_name": product.get("product_name"),
+                    "food_confidence": stage1_product.get(
+                        "food_confidence"
+                    ),
+                    "hff_confidence": stage1_product.get("hff_confidence"),
                     **review,
                 }
             )
@@ -39,6 +48,8 @@ def _candidate(review: dict[str, Any]) -> dict[str, Any]:
     return {
         "product_index": review.get("product_index"),
         "product_name": review.get("product_name"),
+        "food_confidence": review.get("food_confidence"),
+        "hff_confidence": review.get("hff_confidence"),
         "violation_type": review.get("violation_type"),
         "violation_label": VIOLATION_LABELS.get(
             str(review.get("violation_type")),

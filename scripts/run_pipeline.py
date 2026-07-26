@@ -25,6 +25,9 @@ from validators.core import (
     validate_stage2_input,
 )
 
+HIGH_CONFIDENCE_FOOD_THRESHOLD = 0.80
+FOOD_REVIEW_THRESHOLD = 0.50
+
 
 def load_prompt(name: str) -> str:
     return (PACKAGE_ROOT / "prompts" / name).read_text(encoding="utf-8")
@@ -55,9 +58,55 @@ def stage1(provider: str, source: dict[str, Any]) -> dict[str, Any]:
         result.data["file_search"] = result.tracking(
             f"{source['title']} {source['body_text']}"
         )
+    normalize_stage1_food_confidence(result.data)
     validate_schema(result.data, "stage1_output.schema.json")
     validate_stage1_links(result.data)
     return result.data
+
+
+def normalize_stage1_food_confidence(output: dict[str, Any]) -> None:
+    """Promote a supported high-confidence food candidate deterministically."""
+
+    promoted_indexes: set[int] = set()
+    for product in output.get("products", []):
+        product_type = product.get("product_type")
+        food_confidence = product.get("food_confidence")
+        hff_confidence = product.get("hff_confidence")
+        uncertainty_codes = product.get("uncertainty_codes", [])
+        if (
+            product_type not in {"FOOD_FALLBACK", "UNCERTAIN"}
+            or not isinstance(food_confidence, (int, float))
+            or not isinstance(hff_confidence, (int, float))
+            or food_confidence < HIGH_CONFIDENCE_FOOD_THRESHOLD
+            or food_confidence <= hff_confidence
+            or "CONFLICTING_PRODUCT_TYPE_EVIDENCE" in uncertainty_codes
+        ):
+            continue
+
+        product["product_type"] = "FOOD"
+        product["confidence"] = food_confidence
+        if product.get("product_subtype") == "NOT_APPLICABLE":
+            product["product_subtype"] = "UNKNOWN_FOOD"
+        promoted_indexes.add(product["product_index"])
+
+    if not promoted_indexes:
+        return
+
+    for route in output.get("routes", []):
+        if route.get("product_index") in promoted_indexes:
+            route["stage2_route"] = "FOOD_REVIEW"
+            route["store_alias"] = "FS11_FOOD_REVIEW"
+
+    products = output.get("products", [])
+    if len(products) == 1 and products[0].get("product_index") in promoted_indexes:
+        output["record_product_type"] = "FOOD"
+    output["requires_human_review"] = True
+    reason = str(output.get("short_reason") or "").rstrip()
+    suffix = (
+        "food_confidence 0.80 이상 기준으로 식품 검토 경로를 적용했으며 "
+        "담당자 확인이 필요함"
+    )
+    output["short_reason"] = f"{reason}; {suffix}" if reason else suffix
 
 
 def make_stage2_input(
@@ -111,9 +160,123 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
         result.data["file_search"] = result.tracking(
             f"{payload['title']} {payload['body_text']}"
         )
+    apply_food_hff_confusion_guardrail(payload, result.data)
     normalize_stage2_statuses(result.data)
     validate_stage2(payload, result.data)
     return result.data
+
+
+def apply_food_hff_confusion_guardrail(
+    payload: dict[str, Any],
+    output: dict[str, Any],
+) -> None:
+    """Ensure an eligible food candidate advertised as 영양제 is reviewable."""
+
+    product = payload.get("stage1_product", {})
+    product_type = payload.get("product_type")
+    food_confidence = product.get("food_confidence", 0)
+    hff_confidence = product.get("hff_confidence", 0)
+    uncertainty_codes = payload.get("stage1_uncertainty_codes", [])
+    confirmed_food = product_type == "FOOD"
+    provisional_food = (
+        product_type == "FOOD_FALLBACK"
+        and food_confidence >= FOOD_REVIEW_THRESHOLD
+        and food_confidence > hff_confidence
+        and "CONFLICTING_PRODUCT_TYPE_EVIDENCE" not in uncertainty_codes
+    )
+    if (
+        not (confirmed_food or provisional_food)
+        or "MULTI_PRODUCT" in uncertainty_codes
+    ):
+        return
+
+    title = str(payload.get("title") or "")
+    body = str(payload.get("body_text") or "")
+    if "영양제" in title:
+        source_field = "title"
+    elif "영양제" in body:
+        source_field = "body_text"
+    else:
+        return
+
+    expressions = output.setdefault("problem_expressions", [])
+    expression = next(
+        (
+            item
+            for item in expressions
+            if item.get("quote") == "영양제"
+            and item.get("source_field") == source_field
+            and item.get("product_linked") is True
+        ),
+        None,
+    )
+    if expression is None:
+        expression_id = (
+            f"AUTO-HFF-CONFUSION-{payload.get('product_index', 0)}"
+        )
+        expression = {
+            "expression_id": expression_id,
+            "quote": "영양제",
+            "source_field": source_field,
+            "product_linked": True,
+        }
+        expressions.append(expression)
+    expression_id = expression["expression_id"]
+
+    reviews = output.setdefault("violation_reviews", [])
+    review = next(
+        (
+            item
+            for item in reviews
+            if item.get("violation_type") == "HFF_CONFUSION"
+        ),
+        None,
+    )
+    if review is None:
+        review = {
+            "violation_type": "HFF_CONFUSION",
+            "status": "NOT_DETECTED",
+            "risk_score": 0,
+            "expression_ids": [],
+            "rule_ids": [],
+            "official_evidence_ids": [],
+            "case_ids": [],
+            "score_factors": [],
+            "score_reason": "",
+            "uncertainty_codes": [],
+        }
+        reviews.append(review)
+
+    if expression_id not in review["expression_ids"]:
+        review["expression_ids"].append(expression_id)
+    factor = (
+        "식품 판정 또는 food_confidence 0.50 이상 식품 후보와 "
+        "'영양제' 제품 지칭 표현 연결"
+    )
+    if factor not in review["score_factors"]:
+        review["score_factors"].append(factor)
+
+    official_evidence = review.get("official_evidence_ids", [])
+    current_score = review.get("risk_score", 0)
+    if not isinstance(current_score, int):
+        current_score = 0
+    if official_evidence:
+        review["risk_score"] = max(current_score, 8)
+    else:
+        review["risk_score"] = min(max(current_score, 6), 7)
+        if "SEARCH_NO_OFFICIAL_EVIDENCE" not in review["uncertainty_codes"]:
+            review["uncertainty_codes"].append(
+                "SEARCH_NO_OFFICIAL_EVIDENCE"
+            )
+        product_uncertainty = output.setdefault("uncertainty_codes", [])
+        if "SEARCH_NO_OFFICIAL_EVIDENCE" not in product_uncertainty:
+            product_uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
+    review["score_reason"] = (
+        "식품 판정 또는 food_confidence 0.50 이상 식품 후보를 광고에서 "
+        "'영양제'로 지칭하여 "
+        "건강기능식품 오인 가능성을 담당자가 확인해야 함"
+    )
+    output["requires_human_review"] = True
 
 
 def normalize_stage2_statuses(output: dict[str, Any]) -> None:
@@ -136,6 +299,7 @@ def normalize_stage2_statuses(output: dict[str, Any]) -> None:
         and review["risk_score"] in STATUS_BY_SCORE
     ]
     expected = max(scores, default=0)
+    output["product_overall_risk_score"] = expected
     if any(
         review.get("status") == "INSUFFICIENT_EVIDENCE"
         for review in reviews
