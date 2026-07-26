@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -172,23 +173,40 @@ def failure_record(
     error: Exception,
 ) -> dict[str, Any]:
     text = str(error)
-    known_codes = [
-        "PROVIDER_MODEL_UNSUPPORTED",
-        "PROVIDER_TIMEOUT",
-        "FILE_SEARCH_NOT_RUN",
-        "FILE_SEARCH_STORE_UNAVAILABLE",
-        "JSON_SCHEMA_INVALID",
-        "RISK_SCORE_INVALID",
-        "RISK_AGGREGATION_MISMATCH",
-        "MODEL_REFUSAL_OR_EMPTY",
+    code_patterns = [
+        ("PROVIDER_MODEL_UNSUPPORTED", "PROVIDER_MODEL_UNSUPPORTED"),
+        ("PROVIDER_TIMEOUT", "PROVIDER_TIMEOUT"),
+        ("FILE_SEARCH_NOT_RUN", "FILE_SEARCH_NOT_RUN"),
+        ("FILE_SEARCH_STORE_DISCOVERY_FAILED", "FILE_SEARCH_STORE_UNAVAILABLE"),
+        (
+            "FILE_SEARCH_STORE_NOT_UNIQUELY_CONFIGURED",
+            "FILE_SEARCH_STORE_UNAVAILABLE",
+        ),
+        ("FILE_SEARCH_STORE_ID_MISSING", "FILE_SEARCH_STORE_UNAVAILABLE"),
+        ("UNKNOWN_FILE_SEARCH_STORE_ALIAS", "FILE_SEARCH_STORE_UNAVAILABLE"),
+        ("FILE_SEARCH_STORE_UNAVAILABLE", "FILE_SEARCH_STORE_UNAVAILABLE"),
+        ("JSON_SCHEMA_INVALID", "JSON_SCHEMA_INVALID"),
+        ("RISK_SCORE_INVALID", "RISK_SCORE_INVALID"),
+        ("RISK_AGGREGATION_MISMATCH", "RISK_AGGREGATION_MISMATCH"),
+        ("MODEL_REFUSAL_OR_EMPTY", "MODEL_REFUSAL_OR_EMPTY"),
     ]
-    code = next((item for item in known_codes if item in text), "JSON_SCHEMA_INVALID")
+    code = next(
+        (public_code for pattern, public_code in code_patterns if pattern in text),
+        "PROVIDER_RESPONSE_INVALID",
+    )
+    safe_message = text[:1000]
+    for pattern, replacement in (
+        (r"sk-[A-Za-z0-9_-]+", "[REDACTED_KEY]"),
+        (r"vs_[A-Za-z0-9_-]+", "[REDACTED_STORE]"),
+        (r"(?:proj|org)_[A-Za-z0-9_-]+", "[REDACTED_SCOPE]"),
+    ):
+        safe_message = re.sub(pattern, replacement, safe_message)
     return {
         "record_id": str(source.get("record_id") or "UNKNOWN"),
         "stage": stage,
         "provider": provider,
         "error_code": code,
-        "message": text[:1000],
+        "message": safe_message,
         "retry_count": 1 if provider != "offline" else 0,
         "requires_human_review": True,
         "created_at": datetime.now(timezone.utc).isoformat(),

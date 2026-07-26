@@ -20,10 +20,72 @@ from adapters.common.contracts import (
 )
 
 DEFAULT_MODEL = "gpt-5.6-sol"
+STORE_NAMES = {
+    "FS01_PRODUCT_GATE": "MFDS_FS01_PRODUCT_GATE_20260727_V09",
+    "FS11_FOOD_REVIEW": "MFDS_FS11_FOOD_REVIEW_20260727_V09",
+    "FS21_HFF_REVIEW": "MFDS_FS21_HFF_REVIEW_20260727_V09",
+}
+_STORE_ID_CACHE: dict[str, str] = {}
 RECORD_ID_PATTERN = re.compile(
     r'(?:record_id|영구 ID)["\s:=]+([A-Za-z0-9_.:/-]+)',
     re.IGNORECASE,
 )
+
+
+def _resolve_vector_store_id(client: OpenAI, store_alias: str) -> str:
+    """Resolve a usable store without exposing project-specific IDs.
+
+    A saved ID can become stale when the API key is moved to another project.
+    Verify the configured ID first, then fall back to the unique deployment
+    store name in the key's current project.
+    """
+
+    cached = _STORE_ID_CACHE.get(store_alias)
+    if cached:
+        return cached
+
+    configured = ""
+    try:
+        configured = store_identifier("openai", store_alias)
+    except ProviderConfigError:
+        pass
+
+    if configured:
+        try:
+            client.vector_stores.retrieve(configured)
+        except Exception:
+            # Do not include the provider exception because it can contain IDs.
+            pass
+        else:
+            _STORE_ID_CACHE[store_alias] = configured
+            return configured
+
+    expected_name = STORE_NAMES.get(store_alias)
+    if not expected_name:
+        raise ProviderConfigError("UNKNOWN_FILE_SEARCH_STORE_ALIAS")
+
+    try:
+        stores = client.vector_stores.list(limit=100)
+        matches = [
+            item
+            for item in stores
+            if getattr(item, "name", None) == expected_name
+        ]
+    except Exception as error:
+        raise ProviderConfigError(
+            "FILE_SEARCH_STORE_DISCOVERY_FAILED"
+        ) from error
+
+    if len(matches) != 1:
+        raise ProviderConfigError(
+            "FILE_SEARCH_STORE_NOT_UNIQUELY_CONFIGURED"
+        )
+
+    resolved = str(getattr(matches[0], "id", "")).strip()
+    if not resolved:
+        raise ProviderConfigError("FILE_SEARCH_STORE_ID_MISSING")
+    _STORE_ID_CACHE[store_alias] = resolved
+    return resolved
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -114,13 +176,13 @@ def run(
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise ProviderConfigError("OPENAI_API_KEY is not configured")
-    vector_store_id = store_identifier("openai", store_alias)
     model = os.getenv("OPENAI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     client = OpenAI(
         api_key=api_key,
         timeout=float(os.getenv("OPENAI_TIMEOUT_SECONDS", "180")),
         max_retries=0,
     )
+    vector_store_id = _resolve_vector_store_id(client, store_alias)
     args = {
         "model": model,
         "instructions": system_prompt,
