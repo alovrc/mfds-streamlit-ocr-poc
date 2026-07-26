@@ -16,6 +16,7 @@ sys.path.insert(0, str(PACKAGE_ROOT))
 
 from scripts.run_pipeline import failure_record, run
 from auth import verify_password
+from result_partition import independent_review_output
 
 STORE_ALIASES = ("FS01_PRODUCT_GATE", "FS11_FOOD_REVIEW", "FS21_HFF_REVIEW")
 
@@ -201,10 +202,36 @@ def render_input() -> dict[str, Any]:
     }
 
 
+def render_independent_report(report: dict[str, Any]) -> None:
+    """Render findings from the current advertisement review."""
+
+    st.subheader("광고 원문 독립검토 결과")
+    findings = report["independent_findings"]
+    if not findings:
+        st.info("현재 광고 원문에서 탐지된 위반 가능 항목이 없습니다.")
+    else:
+        rows = [
+            {
+                "제품명": item["product_name"] or "-",
+                "위반 가능 항목": item["violation_label"],
+                "상태": item["status"],
+                "위험도": item["risk_score"],
+                "Rule ID 수": len(item["rule_ids"]),
+                "공식근거 ID 수": len(item["official_evidence_ids"]),
+                "불확실성": ", ".join(item["uncertainty_codes"]) or "-",
+            }
+            for item in findings
+        ]
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+        with st.expander("항목별 검색 근거와 판단 사유"):
+            st.json(findings, expanded=False)
+    st.caption(report["independent_findings_scope"])
+
+
 def render_results() -> None:
     results = st.session_state.results
     result_tab, comparison_tab, review_tab = st.tabs(
-        ["1·2단계 결과", "공급자 비교", "담당자 검토"]
+        ["광고 원문 독립검토", "공급자 비교", "담당자 검토"]
     )
     with result_tab:
         if not results:
@@ -212,18 +239,32 @@ def render_results() -> None:
         else:
             provider = st.selectbox("결과 공급자", list(results))
             output = results[provider]
+            report = independent_review_output(output)
             first, second, third = st.columns(3)
             first.metric("게시물 위험도", output["record_overall_risk_score"])
             second.metric("전체 상태", output["record_overall_status"])
             third.metric(
                 "담당자 검토", "필요" if output["requires_human_review"] else "불필요"
             )
-            st.json(output, expanded=False)
-            st.download_button(
-                "검증 결과 JSON 다운로드",
+            render_independent_report(report)
+            with st.expander("원본 1·2단계 모델 결과"):
+                st.json(output, expanded=False)
+            download_left, download_right = st.columns(2)
+            download_left.download_button(
+                "독립검토 보고서 JSON 다운로드",
+                json.dumps(report, ensure_ascii=False, indent=2),
+                file_name=(
+                    f"{output['record_id']}-{provider}-independent-review.json"
+                ),
+                mime="application/json",
+                use_container_width=True,
+            )
+            download_right.download_button(
+                "원본 모델 결과 JSON 다운로드",
                 json.dumps(output, ensure_ascii=False, indent=2),
                 file_name=f"{output['record_id']}-{provider}.json",
                 mime="application/json",
+                use_container_width=True,
             )
     with comparison_tab:
         if {"openai", "gemini"} <= results.keys():

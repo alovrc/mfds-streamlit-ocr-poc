@@ -24,3 +24,9 @@ OpenAI File Search 기반 MFDS 2단계 검토 앱의 공개 배포용 최소 저
 python -m pip install -r requirements.txt
 python -m streamlit run streamlit_app.py
 ```
+
+## 광고 원문 독립검토 보고서
+
+앱은 현재 광고 원문을 File Search의 제품정보·Rule·공식근거와 대조해 위반 가능
+항목을 검토한다. 검증된 원본 파이프라인 JSON도 독립검토 보고서와 별도로
+확인하고 내려받을 수 있다.
