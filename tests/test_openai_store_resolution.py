@@ -27,6 +27,17 @@ def setup_function() -> None:
     openai_client._STORE_ID_CACHE.clear()
 
 
+def test_classifies_insufficient_quota_without_exposing_message() -> None:
+    error = RuntimeError(
+        "429 insufficient_quota: You exceeded your current quota"
+    )
+
+    assert (
+        openai_client._provider_error_code(error)
+        == "PROVIDER_QUOTA_EXCEEDED"
+    )
+
+
 def test_uses_valid_configured_store(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         openai_client,

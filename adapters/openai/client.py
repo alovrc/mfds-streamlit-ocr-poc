@@ -96,6 +96,23 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _provider_error_code(error: Exception) -> str | None:
+    """Map provider failures to safe public codes without leaking details."""
+
+    text = str(error).lower()
+    if "insufficient_quota" in text or "current quota" in text:
+        return "PROVIDER_QUOTA_EXCEEDED"
+    if "invalid_api_key" in text or "incorrect api key" in text:
+        return "PROVIDER_AUTH_FAILED"
+    if "rate_limit_exceeded" in text:
+        return "PROVIDER_RATE_LIMITED"
+    if "permission" in text or "error code: 403" in text:
+        return "PROVIDER_PROJECT_ACCESS_DENIED"
+    if "timeout" in text or "timed out" in text:
+        return "PROVIDER_TIMEOUT"
+    return None
+
+
 def _walk(value: Any):
     yield value
     if isinstance(value, dict):
@@ -236,7 +253,18 @@ def run(
         except (json.JSONDecodeError, ProviderResponseError) as error:
             last_error = error
         except Exception as error:  # SDK maps provider and network errors.
-            last_error = error
+            safe_code = _provider_error_code(error)
+            if safe_code and safe_code != "PROVIDER_RATE_LIMITED":
+                raise ProviderResponseError(safe_code) from error
+            last_error = (
+                ProviderResponseError(safe_code)
+                if safe_code
+                else error
+            )
         if attempt == 0:
+            if isinstance(last_error, ProviderResponseError) and str(
+                last_error
+            ) == "PROVIDER_RATE_LIMITED":
+                time.sleep(1)
             continue
     raise ProviderResponseError(f"OpenAI request failed after one retry: {last_error}")

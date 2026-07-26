@@ -174,6 +174,13 @@ def failure_record(
 ) -> dict[str, Any]:
     text = str(error)
     code_patterns = [
+        ("PROVIDER_QUOTA_EXCEEDED", "PROVIDER_QUOTA_EXCEEDED"),
+        ("PROVIDER_RATE_LIMITED", "PROVIDER_RATE_LIMITED"),
+        ("PROVIDER_AUTH_FAILED", "PROVIDER_AUTH_FAILED"),
+        (
+            "PROVIDER_PROJECT_ACCESS_DENIED",
+            "PROVIDER_PROJECT_ACCESS_DENIED",
+        ),
         ("PROVIDER_MODEL_UNSUPPORTED", "PROVIDER_MODEL_UNSUPPORTED"),
         ("PROVIDER_TIMEOUT", "PROVIDER_TIMEOUT"),
         ("FILE_SEARCH_NOT_RUN", "FILE_SEARCH_NOT_RUN"),

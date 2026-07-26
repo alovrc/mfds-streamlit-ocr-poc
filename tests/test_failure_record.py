@@ -18,3 +18,14 @@ def test_store_discovery_failure_is_classified_and_redacted() -> None:
     assert "vs_sensitive" not in failure["message"]
     assert "proj_sensitive" not in failure["message"]
     assert "org_sensitive" not in failure["message"]
+
+
+def test_quota_failure_is_classified() -> None:
+    failure = failure_record(
+        {"record_id": "T2"},
+        "openai",
+        "aggregate",
+        RuntimeError("PROVIDER_QUOTA_EXCEEDED"),
+    )
+
+    assert failure["error_code"] == "PROVIDER_QUOTA_EXCEEDED"
