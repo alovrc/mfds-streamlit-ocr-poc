@@ -111,8 +111,38 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
         result.data["file_search"] = result.tracking(
             f"{payload['title']} {payload['body_text']}"
         )
+    normalize_stage2_statuses(result.data)
     validate_stage2(payload, result.data)
     return result.data
+
+
+def normalize_stage2_statuses(output: dict[str, Any]) -> None:
+    """Derive redundant status fields deterministically from validated scores."""
+
+    reviews = output.get("violation_reviews", [])
+    for review in reviews:
+        score = review.get("risk_score")
+        if (
+            review.get("status") != "INSUFFICIENT_EVIDENCE"
+            and type(score) is int
+            and score in STATUS_BY_SCORE
+        ):
+            review["status"] = STATUS_BY_SCORE[score]
+
+    scores = [
+        review.get("risk_score")
+        for review in reviews
+        if type(review.get("risk_score")) is int
+        and review["risk_score"] in STATUS_BY_SCORE
+    ]
+    expected = max(scores, default=0)
+    if any(
+        review.get("status") == "INSUFFICIENT_EVIDENCE"
+        for review in reviews
+    ):
+        output["product_overall_status"] = "INSUFFICIENT_EVIDENCE"
+    else:
+        output["product_overall_status"] = STATUS_BY_SCORE[expected]
 
 
 def aggregate(

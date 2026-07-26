@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -28,6 +30,14 @@ STATUS_BY_SCORE = {
 
 class ContractValidationError(ValueError):
     """Raised when structural or semantic validation fails."""
+
+
+def normalize_quote_text(value: str) -> str:
+    """Normalize invisible characters and layout-only whitespace for quotes."""
+
+    normalized = unicodedata.normalize("NFKC", value)
+    normalized = re.sub(r"[\u200b-\u200f\u2060\ufeff]", "", normalized)
+    return re.sub(r"\s+", "", normalized)
 
 
 def load_schema(name: str) -> dict[str, Any]:
@@ -88,7 +98,9 @@ def validate_quotes(stage2_input: dict[str, Any], stage2_output: dict[str, Any])
         "body_text": stage2_input["body_text"],
     }
     for expression in stage2_output["problem_expressions"]:
-        if expression["quote"] not in sources[expression["source_field"]]:
+        quote = normalize_quote_text(expression["quote"])
+        source = normalize_quote_text(sources[expression["source_field"]])
+        if not quote or quote not in source:
             raise ContractValidationError(
                 f"QUOTE_NOT_IN_SOURCE: {expression['expression_id']}"
             )
