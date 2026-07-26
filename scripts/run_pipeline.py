@@ -18,6 +18,7 @@ from adapters.common import offline
 from validators.core import (
     ContractValidationError,
     STATUS_BY_SCORE,
+    normalize_quote_text,
     validate_aggregate,
     validate_schema,
     validate_stage1_links,
@@ -27,6 +28,24 @@ from validators.core import (
 
 HIGH_CONFIDENCE_FOOD_THRESHOLD = 0.80
 FOOD_REVIEW_THRESHOLD = 0.50
+
+
+def sanitize_unicode_surrogates(value: Any) -> Any:
+    """Replace lone UTF-16 surrogate code points before JSON/API processing."""
+
+    if isinstance(value, str):
+        return "".join(
+            "\ufffd" if 0xD800 <= ord(character) <= 0xDFFF else character
+            for character in value
+        )
+    if isinstance(value, list):
+        return [sanitize_unicode_surrogates(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: sanitize_unicode_surrogates(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def load_prompt(name: str) -> str:
@@ -160,10 +179,89 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
         result.data["file_search"] = result.tracking(
             f"{payload['title']} {payload['body_text']}"
         )
+    quarantine_invalid_problem_expressions(payload, result.data)
     apply_food_hff_confusion_guardrail(payload, result.data)
+    cap_high_risk_without_official_evidence(result.data)
     normalize_stage2_statuses(result.data)
     validate_stage2(payload, result.data)
     return result.data
+
+
+def cap_high_risk_without_official_evidence(output: dict[str, Any]) -> None:
+    """Cap unsupported HIGH findings at REVIEW and retain an audit flag."""
+
+    capped = False
+    for review in output.get("violation_reviews", []):
+        score = review.get("risk_score")
+        if (
+            type(score) is int
+            and score >= 8
+            and not review.get("official_evidence_ids")
+        ):
+            review["risk_score"] = 7
+            uncertainty = review.setdefault("uncertainty_codes", [])
+            if "SEARCH_NO_OFFICIAL_EVIDENCE" not in uncertainty:
+                uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
+            capped = True
+
+    if not capped:
+        return
+    product_uncertainty = output.setdefault("uncertainty_codes", [])
+    if "SEARCH_NO_OFFICIAL_EVIDENCE" not in product_uncertainty:
+        product_uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
+    output["requires_human_review"] = True
+
+
+def quarantine_invalid_problem_expressions(
+    payload: dict[str, Any],
+    output: dict[str, Any],
+) -> None:
+    """Remove non-verbatim model quotes and neutralize findings they supported."""
+
+    sources = {
+        "title": str(payload.get("title") or ""),
+        "body_text": str(payload.get("body_text") or ""),
+    }
+    valid_expressions: list[dict[str, Any]] = []
+    invalid_ids: set[str] = set()
+    for expression in output.get("problem_expressions", []):
+        source_field = expression.get("source_field")
+        quote = normalize_quote_text(str(expression.get("quote") or ""))
+        source = normalize_quote_text(sources.get(source_field, ""))
+        if quote and quote in source:
+            valid_expressions.append(expression)
+        else:
+            invalid_ids.add(str(expression.get("expression_id") or ""))
+
+    if not invalid_ids:
+        return
+
+    output["problem_expressions"] = valid_expressions
+    product_uncertainty = output.setdefault("uncertainty_codes", [])
+    if "QUOTE_NOT_IN_SOURCE" not in product_uncertainty:
+        product_uncertainty.append("QUOTE_NOT_IN_SOURCE")
+
+    for review in output.get("violation_reviews", []):
+        original_ids = review.get("expression_ids", [])
+        remaining_ids = [
+            expression_id
+            for expression_id in original_ids
+            if expression_id not in invalid_ids
+        ]
+        if len(remaining_ids) == len(original_ids):
+            continue
+        review["expression_ids"] = remaining_ids
+        uncertainty = review.setdefault("uncertainty_codes", [])
+        if "QUOTE_NOT_IN_SOURCE" not in uncertainty:
+            uncertainty.append("QUOTE_NOT_IN_SOURCE")
+        if not remaining_ids:
+            review["risk_score"] = 0
+            review["status"] = "INSUFFICIENT_EVIDENCE"
+            review["score_reason"] = (
+                "모델이 제시한 문제표현을 입력 원문에서 확인할 수 없어 "
+                "해당 후보를 근거 불충분으로 격리했습니다."
+            )
+    output["requires_human_review"] = True
 
 
 def apply_food_hff_confusion_guardrail(
@@ -350,6 +448,7 @@ def aggregate(
 
 
 def run(provider: str, source: dict[str, Any]) -> dict[str, Any]:
+    source = sanitize_unicode_surrogates(source)
     first = stage1(provider, source)
     results: list[dict[str, Any]] = []
     for route in first["routes"]:
