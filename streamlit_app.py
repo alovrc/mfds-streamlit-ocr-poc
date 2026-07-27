@@ -16,6 +16,7 @@ sys.path.insert(0, str(PACKAGE_ROOT))
 
 from scripts.run_pipeline import failure_record, run
 from auth import verify_password
+from markdown_report import build_markdown_report
 from result_partition import independent_review_output
 
 STORE_ALIASES = ("FS01_PRODUCT_GATE", "FS11_FOOD_REVIEW", "FS21_HFF_REVIEW")
@@ -181,6 +182,7 @@ def run_provider(provider: str, source: dict[str, Any]) -> None:
             st.error(f"{provider} 실행 실패: {failure['error_code']}")
         else:
             st.session_state.results[provider] = output
+            st.session_state.sources[provider] = dict(source)
             st.session_state.failures.pop(provider, None)
             st.success(f"{provider} 실행과 계약 검증이 완료됐습니다.")
 
@@ -242,6 +244,11 @@ def render_results() -> None:
             provider = st.selectbox("결과 공급자", list(results))
             output = results[provider]
             report = independent_review_output(output)
+            markdown_report = build_markdown_report(
+                output,
+                provider,
+                st.session_state.sources.get(provider, {}),
+            )
             first, second, third = st.columns(3)
             first.metric("게시물 위험도", output["record_overall_risk_score"])
             second.metric("전체 상태", output["record_overall_status"])
@@ -251,7 +258,16 @@ def render_results() -> None:
             render_independent_report(report)
             with st.expander("원본 1·2단계 모델 결과"):
                 st.json(output, expanded=False)
-            download_left, download_right = st.columns(2)
+            download_markdown, download_left, download_right = st.columns(3)
+            download_markdown.download_button(
+                "결과보고서 Markdown 다운로드",
+                markdown_report.encode("utf-8-sig"),
+                file_name=(
+                    f"{output['record_id']}-{provider}-result-report.md"
+                ),
+                mime="text/markdown; charset=utf-8",
+                use_container_width=True,
+            )
             download_left.download_button(
                 "독립검토 보고서 JSON 다운로드",
                 json.dumps(report, ensure_ascii=False, indent=2),
@@ -307,10 +323,12 @@ def main() -> None:
     if st.sidebar.button("로그아웃", use_container_width=True):
         st.session_state.authenticated = False
         st.session_state.results = {}
+        st.session_state.sources = {}
         st.session_state.failures = {}
         st.rerun()
 
     st.session_state.setdefault("results", {})
+    st.session_state.setdefault("sources", {})
     st.session_state.setdefault("failures", {})
     source = render_input()
     st.divider()
@@ -327,6 +345,7 @@ def main() -> None:
     )
     if clear_col.button("결과 초기화", use_container_width=True):
         st.session_state.results = {}
+        st.session_state.sources = {}
         st.session_state.failures = {}
         st.rerun()
     st.divider()

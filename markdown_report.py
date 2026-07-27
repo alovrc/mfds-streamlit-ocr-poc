@@ -1,0 +1,339 @@
+"""Build a human-readable Markdown report from validated File Search output."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from result_partition import ACTIVE_STATUSES, VIOLATION_LABELS
+
+
+def _text(value: Any, default: str = "-") -> str:
+    if value in (None, "", [], {}):
+        return default
+    if isinstance(value, bool):
+        return "예" if value else "아니오"
+    if isinstance(value, (list, tuple, set)):
+        return ", ".join(str(item) for item in value) or default
+    return str(value)
+
+
+def _cell(value: Any) -> str:
+    return _text(value).replace("|", "&#124;").replace("\r", " ").replace("\n", " ")
+
+
+def _table(headers: tuple[str, ...], rows: list[tuple[Any, ...]]) -> list[str]:
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    if not rows:
+        rows = [tuple("-" for _ in headers)]
+    lines.extend(
+        "| " + " | ".join(_cell(value) for value in row) + " |"
+        for row in rows
+    )
+    return lines
+
+
+def _expression_map(product: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("expression_id")): item
+        for item in product.get("problem_expressions", [])
+        if item.get("expression_id")
+    }
+
+
+def _search_runs(output: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    runs: list[tuple[str, dict[str, Any]]] = []
+    stage1_search = output.get("stage1", {}).get("file_search")
+    if isinstance(stage1_search, dict):
+        runs.append(("1단계 제품·경로 판정", stage1_search))
+    for product in output.get("product_results", []):
+        search = product.get("file_search")
+        if isinstance(search, dict):
+            product_name = _text(product.get("product_name"), "제품명 미확인")
+            runs.append((f"2단계 위반 검토: {product_name}", search))
+    return runs
+
+
+def _all_uncertainty_codes(output: dict[str, Any]) -> list[str]:
+    codes: list[str] = list(output.get("error_codes", []))
+    codes.extend(output.get("stage1", {}).get("uncertainty_codes", []))
+    for product in output.get("product_results", []):
+        codes.extend(product.get("uncertainty_codes", []))
+        for review in product.get("violation_reviews", []):
+            codes.extend(review.get("uncertainty_codes", []))
+    return list(dict.fromkeys(str(code) for code in codes if code))
+
+
+def build_markdown_report(
+    output: dict[str, Any],
+    provider: str,
+    source: dict[str, Any] | None = None,
+    generated_at: str | None = None,
+) -> str:
+    """Return a standalone UTF-8 Markdown result report."""
+
+    source = source or {}
+    stage1 = output.get("stage1", {})
+    stage1_products = {
+        item.get("product_index"): item for item in stage1.get("products", [])
+    }
+    routes = {
+        item.get("product_index"): item for item in stage1.get("routes", [])
+    }
+    generated_at = generated_at or datetime.now().astimezone().isoformat(
+        timespec="seconds"
+    )
+    lines = [
+        "# MFDS Cloud File Search 결과보고서",
+        "",
+        "> 법적 최종 판단 도구가 아닙니다. 최종 판단 전 담당자가 원문과 "
+        "검색 근거 및 사실성을 확인해야 합니다.",
+        "",
+        "## 1. 검토 개요",
+        "",
+    ]
+    lines.extend(
+        _table(
+            ("항목", "내용"),
+            [
+                ("보고서 생성시각", generated_at),
+                ("공급자", provider),
+                ("레코드 ID", output.get("record_id")),
+                ("플랫폼", source.get("platform")),
+                ("게시물 제목", source.get("title")),
+                ("원문 URL", source.get("source_url")),
+            ],
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "## 2. 전체 결과 요약",
+            "",
+        ]
+    )
+    lines.extend(
+        _table(
+            ("항목", "결과"),
+            [
+                ("전체 상태", output.get("record_overall_status")),
+                ("전체 위험도", f"{output.get('record_overall_risk_score', '-')}/10"),
+                (
+                    "담당자 검토",
+                    "필요" if output.get("requires_human_review") else "불필요",
+                ),
+                ("레코드 제품유형", stage1.get("record_product_type")),
+                ("제품 존재", stage1.get("product_presence")),
+                ("판매광고 문맥", stage1.get("sales_ad_context")),
+                ("1단계 판단 사유", stage1.get("short_reason")),
+            ],
+        )
+    )
+
+    lines.extend(["", "## 3. 제품 분류·신뢰도·라우팅", ""])
+    product_rows: list[tuple[Any, ...]] = []
+    for product in output.get("product_results", []):
+        product_index = product.get("product_index")
+        classified = stage1_products.get(product_index, {})
+        route = routes.get(product_index, {})
+        product_rows.append(
+            (
+                product_index,
+                product.get("product_name"),
+                classified.get("product_type") or product.get("product_type"),
+                classified.get("food_confidence"),
+                classified.get("hff_confidence"),
+                classified.get("confidence"),
+                route.get("stage2_route"),
+                route.get("store_alias"),
+                ", ".join(classified.get("uncertainty_codes", [])),
+            )
+        )
+    lines.extend(
+        _table(
+            (
+                "순번",
+                "제품명",
+                "제품유형",
+                "식품 confidence",
+                "건기식 confidence",
+                "전체 confidence",
+                "2단계 경로",
+                "검색 저장소",
+                "불확실성",
+            ),
+            product_rows,
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "confidence는 자동 분류의 신뢰점수이며 제품유형을 법적으로 "
+            "확정하는 값이 아닙니다.",
+            "",
+            "## 4. 위반 가능 항목",
+            "",
+        ]
+    )
+    finding_rows: list[tuple[Any, ...]] = []
+    active_reviews: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for product in output.get("product_results", []):
+        for review in product.get("violation_reviews", []):
+            label = VIOLATION_LABELS.get(
+                str(review.get("violation_type")),
+                str(review.get("violation_type")),
+            )
+            finding_rows.append(
+                (
+                    product.get("product_name"),
+                    label,
+                    review.get("status"),
+                    review.get("risk_score"),
+                    len(review.get("rule_ids", [])),
+                    len(review.get("official_evidence_ids", [])),
+                    len(review.get("case_ids", [])),
+                )
+            )
+            if review.get("status") in ACTIVE_STATUSES:
+                active_reviews.append((product, review))
+    lines.extend(
+        _table(
+            (
+                "제품명",
+                "위반 가능 항목",
+                "상태",
+                "위험도",
+                "Rule ID",
+                "공식근거 ID",
+                "사례 ID",
+            ),
+            finding_rows,
+        )
+    )
+
+    if not active_reviews:
+        lines.extend(["", "현재 광고 원문에서 활성 위반 후보가 탐지되지 않았습니다."])
+    for index, (product, review) in enumerate(active_reviews, start=1):
+        label = VIOLATION_LABELS.get(
+            str(review.get("violation_type")),
+            str(review.get("violation_type")),
+        )
+        expressions = _expression_map(product)
+        lines.extend(
+            [
+                "",
+                f"### 4.{index}. {_text(product.get('product_name'))} — {label}",
+                "",
+                f"- 상태: `{_text(review.get('status'))}`",
+                f"- 위험도: `{_text(review.get('risk_score'))}/10`",
+                f"- 판단 사유: {_text(review.get('score_reason'))}",
+                f"- Rule ID: {_text(review.get('rule_ids'))}",
+                f"- 공식근거 ID: {_text(review.get('official_evidence_ids'))}",
+                f"- 사례 ID: {_text(review.get('case_ids'))}",
+                f"- 불확실성 코드: {_text(review.get('uncertainty_codes'))}",
+                "- 문제 표현:",
+            ]
+        )
+        expression_ids = review.get("expression_ids", [])
+        if not expression_ids:
+            lines.append("  - 확인된 직접 인용 없음")
+        for expression_id in expression_ids:
+            expression = expressions.get(str(expression_id), {})
+            quote = _text(expression.get("quote"), "인용문 확인 필요")
+            source_field = _text(expression.get("source_field"), "위치 미확인")
+            lines.append(
+                f"  - `{expression_id}` ({source_field}): “{quote}”"
+            )
+
+    lines.extend(["", "## 5. File Search 실행 및 검색 근거", ""])
+    runs = _search_runs(output)
+    lines.extend(
+        _table(
+            (
+                "단계",
+                "저장소",
+                "검색 실행",
+                "검색 ID 수",
+                "citation 수",
+                "지연시간(ms)",
+            ),
+            [
+                (
+                    name,
+                    search.get("store_alias"),
+                    search.get("file_search_run"),
+                    len(search.get("retrieved_ids", [])),
+                    len(search.get("citations", [])),
+                    search.get("latency_ms"),
+                )
+                for name, search in runs
+            ],
+        )
+    )
+    citation_rows: list[tuple[Any, ...]] = []
+    seen_citations: set[tuple[str, str, str]] = set()
+    for name, search in runs:
+        for citation in search.get("citations", []):
+            key = (
+                str(search.get("store_alias") or ""),
+                str(citation.get("record_id") or ""),
+                str(citation.get("source") or ""),
+            )
+            if key in seen_citations:
+                continue
+            seen_citations.add(key)
+            citation_rows.append(
+                (
+                    name,
+                    search.get("store_alias"),
+                    citation.get("record_id"),
+                    citation.get("file_name"),
+                    citation.get("source"),
+                    citation.get("page"),
+                )
+            )
+    lines.extend(["", "### 검색 citation 목록", ""])
+    lines.extend(
+        _table(
+            ("단계", "저장소", "검색 ID", "파일명", "파일 ID", "페이지"),
+            citation_rows,
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "검색 ID와 citation은 모델이 실제로 검색한 자료의 추적정보입니다. "
+            "검색됐다는 사실만으로 개별 위반 후보의 법적 근거가 자동 확정되지는 "
+            "않으며, 위반 후보별 Rule·공식근거 연결을 담당자가 확인해야 합니다.",
+            "",
+            "## 6. 담당자 확인사항",
+            "",
+        ]
+    )
+    uncertainty_codes = _all_uncertainty_codes(output)
+    review_items = [
+        "광고 원문의 문제 표현이 현재 게시물에 실제 존재하는지 확인",
+        "제품유형·제품 DB 일치 여부와 표시사항 확인",
+        "위반 후보별 Rule 및 공식근거가 해당 표현에 직접 적용되는지 확인",
+        "검색 citation의 원문, 버전 및 시행일 확인",
+    ]
+    if uncertainty_codes:
+        review_items.append(
+            "오류·불확실성 코드 확인: " + ", ".join(uncertainty_codes)
+        )
+    lines.extend(f"- {item}" for item in review_items)
+    lines.extend(
+        [
+            "",
+            "## 7. 판정 범위",
+            "",
+            "이 보고서는 현재 광고 원문을 제품정보·Rule·공식근거와 대조해 "
+            "탐지한 위반 가능 항목을 정리한 것입니다. 최종 판단 전 담당자가 "
+            "원문과 검색 근거를 확인해야 합니다.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
