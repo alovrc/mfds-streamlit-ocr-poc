@@ -17,7 +17,9 @@ sys.path.insert(0, str(PACKAGE_ROOT))
 from scripts.run_pipeline import failure_record, run
 from auth import verify_password
 from markdown_report import build_markdown_report
+from ocr_pipeline import collect_and_ocr, merge_capture_text
 from result_partition import independent_review_output
+from web_capture import CaptureError
 
 STORE_ALIASES = ("FS01_PRODUCT_GATE", "FS11_FOOD_REVIEW", "FS21_HFF_REVIEW")
 
@@ -187,21 +189,160 @@ def run_provider(provider: str, source: dict[str, Any]) -> None:
             st.success(f"{provider} 실행과 계약 검증이 완료됐습니다.")
 
 
+def _reset_ocr_capture() -> None:
+    st.session_state.pop("ocr_capture", None)
+    for key in list(st.session_state):
+        if key.startswith(("ocr_reviewed_", "ocr_included_")):
+            st.session_state.pop(key, None)
+
+
+def _render_ocr_capture_editor(capture: dict[str, Any]) -> None:
+    """Show OCR source text without exposing engine confidence scores."""
+
+    st.markdown("### URL 수집·OCR 시험 결과")
+    first, second, third, fourth = st.columns(4)
+    first.metric("본문 글자 수", len(capture["body_text"]))
+    second.metric("발견 이미지", capture["image_discovered_count"])
+    third.metric("OCR 대상", capture["image_selected_count"])
+    fourth.metric("중복 제외", capture["duplicate_image_count"])
+    st.caption(f"최종 도착 URL: {capture['final_url']}")
+    if capture["image_limit_reached"]:
+        st.warning("이미지가 많아 앞의 20개 이미지만 OCR 대상으로 사용했습니다.")
+
+    status_counts = capture["ocr_status_counts"]
+    st.caption(
+        " · ".join(
+            [
+                f"성공 {status_counts.get('SUCCESS', 0)}",
+                f"부분성공 {status_counts.get('PARTIAL_SUCCESS', 0)}",
+                f"문자없음 {status_counts.get('NO_TEXT_DETECTED', 0)}",
+                f"실패 {status_counts.get('FAILED', 0)}",
+                f"다운로드실패 {status_counts.get('IMAGE_FETCH_FAILED', 0)}",
+            ]
+        )
+    )
+
+    for record in capture["ocr_records"]:
+        label = f"{record['source_id']} · {record['ocr_status']}"
+        with st.expander(label, expanded=False):
+            image_bytes = record.get("_image_bytes")
+            if image_bytes:
+                st.image(image_bytes, caption=record["image_url"], width=480)
+            else:
+                st.caption(record["image_url"])
+            if record["error_code"]:
+                st.warning(f"처리 오류: {record['error_code']}")
+
+            reviewed_key = f"ocr_reviewed_{record['source_id']}"
+            included_key = f"ocr_included_{record['source_id']}"
+            st.session_state.setdefault(
+                reviewed_key,
+                record.get("reviewed_text") or record.get("ocr_text") or "",
+            )
+            st.session_state.setdefault(
+                included_key,
+                bool(record.get("included_in_analysis")),
+            )
+            reviewed = st.text_area(
+                "OCR 문구 검토",
+                key=reviewed_key,
+                height=120,
+                help=(
+                    "수정해도 엔진 OCR 원문은 보존되고, 수정본은 "
+                    "reviewed_text로 별도 관리됩니다."
+                ),
+            ).strip()
+            record["reviewed_text"] = (
+                reviewed if reviewed != (record.get("ocr_text") or "").strip() else None
+            )
+            record["included_in_analysis"] = st.checkbox(
+                "OpenAI 분석에 포함",
+                key=included_key,
+                disabled=not bool(reviewed),
+            )
+
+    if st.button(
+        "본문＋검토된 OCR 문구 다시 병합",
+        use_container_width=True,
+        key="apply_ocr_merge",
+    ):
+        capture["merged_text"] = merge_capture_text(
+            capture["title"],
+            capture["body_text"],
+            capture["ocr_records"],
+        )
+        st.session_state.input_body_text = capture["merged_text"]
+        st.success("현재 OCR 검토 내용을 게시물 본문 입력란에 반영했습니다.")
+
+
 def render_input() -> dict[str, Any]:
     st.subheader("광고 입력")
-    record_id = st.text_input("레코드 ID", value="MFDS-REVIEW-001")
-    title = st.text_input("게시물 제목")
+    st.info(
+        "OCR 시험 기능입니다. 운영 앱에는 아직 반영되지 않았으며 "
+        "Tesseract가 Streamlit 서버에서 직접 실행됩니다."
+    )
+    record_id = st.text_input(
+        "레코드 ID",
+        value="MFDS-REVIEW-001",
+        key="input_record_id",
+    )
+    source_url = st.text_input(
+        "원문 URL",
+        key="input_source_url",
+        help="공개 http·https URL만 수집하며 내부·사설 IP 접근은 차단합니다.",
+    )
+    capture_col, clear_capture_col = st.columns(2)
+    if capture_col.button(
+        "URL 수집·한글 OCR 실행",
+        type="secondary",
+        use_container_width=True,
+    ):
+        _reset_ocr_capture()
+        with st.spinner("본문과 이미지를 수집하고 Tesseract OCR을 실행합니다."):
+            try:
+                capture = collect_and_ocr(source_url)
+            except CaptureError as error:
+                st.error(f"URL 수집 실패: {error.code} · {error}")
+            except Exception as error:
+                st.error(f"OCR 실행 실패: {type(error).__name__}")
+            else:
+                st.session_state.ocr_capture = capture
+                if capture["title"]:
+                    st.session_state.input_title = capture["title"]
+                st.session_state.input_body_text = capture["merged_text"]
+                if "blog.naver.com" in capture["final_url"]:
+                    st.session_state.input_platform = "네이버 블로그"
+                st.success("URL 수집과 OCR이 완료됐습니다.")
+    if clear_capture_col.button(
+        "OCR 수집결과 초기화",
+        use_container_width=True,
+    ):
+        _reset_ocr_capture()
+        st.session_state.input_body_text = ""
+
+    capture = st.session_state.get("ocr_capture")
+    if capture:
+        _render_ocr_capture_editor(capture)
+
+    title = st.text_input("게시물 제목", key="input_title")
     product_name = st.text_input(
         "제품명 (선택)",
+        key="input_product_name",
         help=(
             "입력하면 공개 승인 건강기능식품 제품 마스터에서 "
             "정규화 품목명 정확조회를 수행합니다."
         ),
     )
-    body_text = st.text_area("게시물 본문", height=240)
-    left, right = st.columns(2)
-    platform = left.text_input("플랫폼", placeholder="예: 네이버 블로그")
-    source_url = right.text_input("원문 URL")
+    body_text = st.text_area(
+        "게시물 본문＋OCR 병합문",
+        height=320,
+        key="input_body_text",
+    )
+    platform = st.text_input(
+        "플랫폼",
+        placeholder="예: 네이버 블로그",
+        key="input_platform",
+    )
     return {
         "record_id": record_id.strip(),
         "title": title.strip(),
@@ -471,13 +612,13 @@ def render_results() -> None:
 
 def main() -> None:
     st.set_page_config(
-        page_title="MFDS 2단계 File Search 검토",
+        page_title="MFDS 2단계 File Search OCR 시험",
         page_icon="🔎",
         layout="wide",
     )
     require_password()
     configure_from_secrets()
-    st.title("MFDS 2단계 Cloud File Search 검토")
+    st.title("MFDS 2단계 Cloud File Search OCR 시험")
     st.caption(
         "1단계 제품·경로 판정 → 제품별 2단계 검색 → 담당자 확인"
     )
