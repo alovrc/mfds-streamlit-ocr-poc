@@ -191,13 +191,6 @@ def validate_risk(stage2_output: dict[str, Any]) -> None:
             raise ContractValidationError(
                 f"ACTIVE_REVIEW_REQUIRES_RULE: {review['violation_type']}"
             )
-        if (
-            review["status"] == "HIGH"
-            and not review["official_evidence_ids"]
-        ):
-            raise ContractValidationError(
-                "HIGH requires at least one official_evidence_id"
-            )
 
 
 def validate_stage2(

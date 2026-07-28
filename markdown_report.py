@@ -196,11 +196,10 @@ def build_markdown_report(
             [
                 "",
                 (
-                    "> 점수별 증거요건을 충족한 유효 위반 후보가 있어 전체 "
+                    "> 원문 문제표현과 Rule ID가 연결된 유효 위반 후보가 있어 전체 "
                     "검토상태를 `SUFFICIENT_EVIDENCE`로 평가했습니다. "
-                    "1~7점 후보는 공식근거 ID가 없어도 유효하지만 담당자 "
-                    "확인이 필요하며, 8~10점 후보는 공식근거 ID가 "
-                    "필수입니다."
+                    "공식근거 ID와 사례 ID는 보조 검색근거이며, 검색되지 "
+                    "않아도 Rule ID와 Rule 설명으로 판단근거를 제시합니다."
                 ),
             ]
         )
@@ -420,6 +419,11 @@ def build_markdown_report(
                 "- 문제 표현:",
             ]
         )
+        if not review.get("official_evidence_ids"):
+            lines.append(
+                "- 공식근거 ID 미검색 시 근거 설명: 적용 Rule ID와 로컬 "
+                "Rule 기준 설명을 판단근거로 사용함"
+            )
         expression_ids = review.get("expression_ids", [])
         if not expression_ids:
             lines.append("  - 확인된 직접 인용 없음")

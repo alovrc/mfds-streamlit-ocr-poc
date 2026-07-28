@@ -64,7 +64,7 @@ def test_quarantine_invalid_problem_expression() -> None:
     assert output["requires_human_review"] is True
 
 
-def test_deterministic_high_risk_without_official_evidence_is_quarantined() -> None:
+def test_high_risk_without_official_evidence_keeps_rule_based_score() -> None:
     output = {
         "problem_expressions": [
             {
@@ -110,8 +110,8 @@ def test_deterministic_high_risk_without_official_evidence_is_quarantined() -> N
 
     apply_deterministic_review_scores(output)
 
-    assert output["violation_reviews"][0]["risk_score"] == 0
-    assert output["violation_reviews"][0]["status"] == "INSUFFICIENT_EVIDENCE"
+    assert output["violation_reviews"][0]["risk_score"] == 10
+    assert output["violation_reviews"][0]["status"] == "HIGH"
     assert (
         "SEARCH_NO_OFFICIAL_EVIDENCE"
         in output["violation_reviews"][0]["uncertainty_codes"]

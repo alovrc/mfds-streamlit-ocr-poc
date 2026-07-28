@@ -376,7 +376,13 @@ def render_evidence_group(
 
     st.markdown(f"**{label}**")
     if not evidence:
-        st.caption("연결된 근거가 없습니다.")
+        if "공식" in label:
+            st.caption(
+                "공식근거 ID는 검색되지 않았습니다. 이 후보의 적용 근거는 "
+                "위의 로컬 Rule ID와 Rule 설명으로 제시합니다."
+            )
+        else:
+            st.caption("연결된 근거가 없습니다.")
         return
     for item in evidence:
         record_id = item.get("record_id") or "-"
@@ -539,11 +545,10 @@ def render_results() -> None:
                 and supported_reviews
             ):
                 st.info(
-                    "점수별 증거요건을 충족한 유효 위반 후보가 있어 전체 "
+                    "원문 문제표현과 Rule ID가 연결된 유효 위반 후보가 있어 전체 "
                     "검토상태를 SUFFICIENT_EVIDENCE로 평가했습니다. "
-                    "1~7점 후보는 공식근거 ID가 없어도 유효하지만 담당자 "
-                    "확인이 필요하며, 8~10점 후보는 공식근거 ID가 "
-                    "필수입니다."
+                    "공식근거 ID와 사례 ID는 보조 검색근거이며, 검색되지 "
+                    "않아도 Rule ID와 Rule 설명으로 판단근거를 제시합니다."
                 )
             deterministic = output.get("deterministic_aggregation", {})
             if deterministic:

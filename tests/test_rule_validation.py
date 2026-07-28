@@ -48,3 +48,14 @@ def test_review_finding_without_official_evidence_passes() -> None:
     }
 
     validate_risk(output)
+
+
+def test_high_finding_without_official_evidence_passes() -> None:
+    item = finding(rule_ids=["RULE-1"])
+    item["official_evidence_ids"] = []
+    output = {
+        "violation_reviews": [item],
+        "product_overall_risk_score": 10,
+    }
+
+    validate_risk(output)

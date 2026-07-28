@@ -75,9 +75,10 @@ def apply_deterministic_review_scores(
     """Replace provisional model scores with rule-table scores.
 
     Only a detected candidate with a linked, verbatim expression is scoreable.
-    Scores of 8 or more additionally require linked official evidence under the
-    PoC evidence contract. Lower-risk candidates without official evidence stay
-    active but require human review. Unsupported candidates remain visible as
+    Every active candidate requires a linked verbatim expression and a local
+    Rule ID. Official evidence is supplementary: a missing official-evidence ID
+    remains visible as an uncertainty but does not invalidate or down-score the
+    candidate. Unsupported candidates remain visible as
     INSUFFICIENT_EVIDENCE with score 0.
     """
 
@@ -115,10 +116,6 @@ def apply_deterministic_review_scores(
         unsupported = (
             not linked_ids
             or not review.get("rule_ids")
-            or (
-                fixed_score >= 8
-                and not review.get("official_evidence_ids")
-            )
         )
         factors = review.setdefault("score_factors", [])
         audit_factor = (
@@ -137,19 +134,6 @@ def apply_deterministic_review_scores(
                 "결정론적 위험도 집계에서 제외했습니다."
             )
             uncertainty = review.setdefault("uncertainty_codes", [])
-            if fixed_score >= 8 and not review.get("official_evidence_ids"):
-                if "SEARCH_NO_OFFICIAL_EVIDENCE" not in uncertainty:
-                    uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
-                product_uncertainty = output.setdefault(
-                    "uncertainty_codes", []
-                )
-                if (
-                    "SEARCH_NO_OFFICIAL_EVIDENCE"
-                    not in product_uncertainty
-                ):
-                    product_uncertainty.append(
-                        "SEARCH_NO_OFFICIAL_EVIDENCE"
-                    )
             if not review.get("rule_ids"):
                 if "SEARCH_NO_RULE" not in uncertainty:
                     uncertainty.append("SEARCH_NO_RULE")
