@@ -191,6 +191,13 @@ def render_input() -> dict[str, Any]:
     st.subheader("광고 입력")
     record_id = st.text_input("레코드 ID", value="MFDS-REVIEW-001")
     title = st.text_input("게시물 제목")
+    product_name = st.text_input(
+        "제품명 (선택)",
+        help=(
+            "입력하면 공개 승인 건강기능식품 제품 마스터에서 "
+            "정규화 품목명 정확조회를 수행합니다."
+        ),
+    )
     body_text = st.text_area("게시물 본문", height=240)
     left, right = st.columns(2)
     platform = left.text_input("플랫폼", placeholder="예: 네이버 블로그")
@@ -198,6 +205,7 @@ def render_input() -> dict[str, Any]:
     return {
         "record_id": record_id.strip(),
         "title": title.strip(),
+        "product_name": product_name.strip() or None,
         "body_text": body_text.strip(),
         "platform": platform.strip() or None,
         "source_url": source_url.strip() or None,

@@ -15,6 +15,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT))
 
 from adapters.common import offline
+from product_master import ProductMasterLookup, lookup_product
 from validators.core import (
     ContractValidationError,
     STATUS_BY_SCORE,
@@ -62,21 +63,105 @@ def provider_module(provider: str):
     raise ValueError(f"unsupported provider: {provider}")
 
 
+def apply_product_master_lookup(
+    output: dict[str, Any],
+    lookup: ProductMasterLookup,
+) -> None:
+    """Apply only a unique exact product-master match deterministically."""
+
+    if lookup.status == "NOT_REQUESTED":
+        return
+    if lookup.status == "UNAVAILABLE":
+        for target in (output, *output.get("products", [])):
+            codes = target.setdefault("uncertainty_codes", [])
+            if "HFF_DB_UNAVAILABLE" not in codes:
+                codes.append("HFF_DB_UNAVAILABLE")
+        output["requires_human_review"] = True
+        return
+    if lookup.status != "EXACT_UNIQUE":
+        if lookup.status == "AMBIGUOUS":
+            for target in (output, *output.get("products", [])):
+                codes = target.setdefault("uncertainty_codes", [])
+                if "CONFLICTING_PRODUCT_TYPE_EVIDENCE" not in codes:
+                    codes.append("CONFLICTING_PRODUCT_TYPE_EVIDENCE")
+            output["requires_human_review"] = True
+        return
+
+    match = lookup.matches[0]
+    products = output.get("products", [])
+    product = next(
+        (
+            item
+            for item in products
+            if str(item.get("product_name") or "").strip()
+            == match.product_name
+        ),
+        products[0] if len(products) == 1 else None,
+    )
+    if product is None:
+        output["requires_human_review"] = True
+        return
+
+    product_index = product["product_index"]
+    product["product_name"] = match.product_name
+    product["product_type"] = "HEALTH_FUNCTIONAL_FOOD"
+    product["product_subtype"] = "NOT_APPLICABLE"
+    product["confidence"] = 1.0
+    product["hff_confidence"] = 1.0
+    product["food_confidence"] = min(
+        float(product.get("food_confidence", 0.0)),
+        0.10,
+    )
+    evidence_id = f"HFF_MASTER::{match.record_id}"
+    if evidence_id not in product["evidence_ids"]:
+        product["evidence_ids"].append(evidence_id)
+    product["uncertainty_codes"] = [
+        code
+        for code in product.get("uncertainty_codes", [])
+        if code not in {"HFF_DB_NO_MATCH", "HFF_DB_UNAVAILABLE"}
+    ]
+
+    for route in output.get("routes", []):
+        if route.get("product_index") == product_index:
+            route["stage2_route"] = "HFF_REVIEW"
+            route["store_alias"] = "FS21_HFF_REVIEW"
+    if len(products) == 1:
+        output["record_product_type"] = "HEALTH_FUNCTIONAL_FOOD"
+    output["uncertainty_codes"] = [
+        code
+        for code in output.get("uncertainty_codes", [])
+        if code not in {"HFF_DB_NO_MATCH", "HFF_DB_UNAVAILABLE"}
+    ]
+    reason = str(output.get("short_reason") or "").rstrip()
+    master_reason = (
+        "공개 승인 제품 마스터 정확일치: "
+        f"{match.product_name} / {match.business_name} / "
+        f"{match.product_type_name}"
+    )
+    output["short_reason"] = (
+        f"{reason}; {master_reason}" if reason else master_reason
+    )
+
+
 def stage1(provider: str, source: dict[str, Any]) -> dict[str, Any]:
     validate_schema(source, "stage1_input.schema.json")
+    master_lookup = lookup_product(source.get("product_name"))
+    provider_payload = dict(source)
+    provider_payload["product_master_lookup"] = master_lookup.prompt_payload()
     module = provider_module(provider)
     if provider == "offline":
         result = module.stage1(source)
     else:
         result = module.run(
             system_prompt=load_prompt("stage1_system_prompt.md"),
-            payload=source,
+            payload=provider_payload,
             schema_name="stage1_output.schema.json",
             store_alias="FS01_PRODUCT_GATE",
         )
         result.data["file_search"] = result.tracking(
             f"{source['title']} {source['body_text']}"
         )
+    apply_product_master_lookup(result.data, master_lookup)
     normalize_stage1_food_confidence(result.data)
     validate_schema(result.data, "stage1_output.schema.json")
     validate_stage1_links(result.data)

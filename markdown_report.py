@@ -104,6 +104,7 @@ def build_markdown_report(
                 ("레코드 ID", output.get("record_id")),
                 ("플랫폼", source.get("platform")),
                 ("게시물 제목", source.get("title")),
+                ("입력 제품명", source.get("product_name")),
                 ("원문 URL", source.get("source_url")),
             ],
         )
@@ -149,6 +150,7 @@ def build_markdown_report(
                 classified.get("confidence"),
                 route.get("stage2_route"),
                 route.get("store_alias"),
+                ", ".join(classified.get("evidence_ids", [])),
                 ", ".join(classified.get("uncertainty_codes", [])),
             )
         )
@@ -163,6 +165,7 @@ def build_markdown_report(
                 "전체 confidence",
                 "2단계 경로",
                 "검색 저장소",
+                "제품분류 근거 ID",
                 "불확실성",
             ),
             product_rows,

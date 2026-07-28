@@ -1,0 +1,12 @@
+{
+  "corpus_name": "mfds_health_functional_food_product_master",
+  "corpus_version": "2026-07-28-v1",
+  "distribution_approval": "MFDS_POC_PUBLIC_REDISTRIBUTION_APPROVED",
+  "source_record_count": 83687,
+  "source_sha256": "11548178cc18b817c85f5a1668db969eb0709afed465920739279050143a0dc9",
+  "sqlite_file_name": "mfds_health_functional_food_product_master_83687.sqlite3",
+  "sqlite_bytes": 52924416,
+  "sqlite_sha256": "7cd71cd2b583b70dbd8cca204db02c81880ebc893960a7aa1220d9a7866729b4",
+  "release_tag": "product-master-2026-07-28-v1",
+  "lookup_policy": "UNIQUE_NORMALIZED_PRODUCT_NAME_EXACT_MATCH_ONLY"
+}
