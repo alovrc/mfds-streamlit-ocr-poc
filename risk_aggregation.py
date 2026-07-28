@@ -37,6 +37,7 @@ def load_risk_rules(path: Path = RULES_PATH) -> dict[str, Any]:
         "source_document",
         "source_sha256",
         "article_names",
+        "article_penalty_priority",
         "violation_rules",
         "representative_selection",
     }
@@ -110,8 +111,13 @@ def apply_deterministic_review_scores(
             continue
 
         fixed_score = int(rule["risk_score"])
-        unsupported = not linked_ids or (
-            fixed_score >= 8 and not review.get("official_evidence_ids")
+        unsupported = (
+            not linked_ids
+            or not review.get("rule_ids")
+            or (
+                fixed_score >= 8
+                and not review.get("official_evidence_ids")
+            )
         )
         factors = review.setdefault("score_factors", [])
         audit_factor = (
@@ -143,6 +149,14 @@ def apply_deterministic_review_scores(
                     product_uncertainty.append(
                         "SEARCH_NO_OFFICIAL_EVIDENCE"
                     )
+            if not review.get("rule_ids"):
+                if "SEARCH_NO_RULE" not in uncertainty:
+                    uncertainty.append("SEARCH_NO_RULE")
+                product_uncertainty = output.setdefault(
+                    "uncertainty_codes", []
+                )
+                if "SEARCH_NO_RULE" not in product_uncertainty:
+                    product_uncertainty.append("SEARCH_NO_RULE")
             human_review = True
             continue
 
@@ -242,6 +256,10 @@ def build_deterministic_aggregation(
 
     article_summaries: list[dict[str, Any]] = []
     article_names = rules["article_names"]
+    penalty_priority = {
+        int(article): int(priority)
+        for article, priority in rules["article_penalty_priority"].items()
+    }
     for article in range(1, 6):
         article_occurrences = [
             item for item in occurrences if item["article_item"] == article
@@ -292,6 +310,7 @@ def build_deterministic_aggregation(
                 -item["occurrence_count"],
                 -item["risk_score"],
                 -item["highest_risk_occurrence_count"],
+                -penalty_priority.get(item["article_item"], 0),
                 item["first_occurrence_order"],
                 item["article_item"],
             ),
@@ -302,6 +321,7 @@ def build_deterministic_aggregation(
                 -item["risk_score"],
                 -item["highest_risk_occurrence_count"],
                 -item["occurrence_count"],
+                -penalty_priority.get(item["article_item"], 0),
                 item["first_highest_risk_occurrence_order"],
                 item["article_item"],
             ),

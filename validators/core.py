@@ -144,6 +144,13 @@ def validate_risk(stage2_output: dict[str, Any]) -> None:
                 f"status/risk mismatch for {review['violation_type']}"
             )
         if (
+            review["status"] in {"HIGH", "REVIEW", "LOW"}
+            and not review["rule_ids"]
+        ):
+            raise ContractValidationError(
+                f"ACTIVE_REVIEW_REQUIRES_RULE: {review['violation_type']}"
+            )
+        if (
             review["status"] == "HIGH"
             and not review["official_evidence_ids"]
         ):

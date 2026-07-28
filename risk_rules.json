@@ -12,6 +12,10 @@
     "4": "거짓·과장",
     "5": "소비자 기만"
   },
+  "article_penalty_priority": {
+    "1": 2,
+    "2": 1
+  },
   "violation_rules": {
     "DISEASE_PREVENTION_TREATMENT": {
       "article_item": 1,
@@ -94,6 +98,7 @@
       "occurrence_count_desc",
       "risk_score_desc",
       "highest_risk_occurrence_count_desc",
+      "article_penalty_priority_desc",
       "first_occurrence_order_asc",
       "article_item_asc"
     ],
@@ -101,6 +106,7 @@
       "risk_score_desc",
       "highest_risk_occurrence_count_desc",
       "occurrence_count_desc",
+      "article_penalty_priority_desc",
       "first_highest_risk_occurrence_order_asc",
       "article_item_asc"
     ]

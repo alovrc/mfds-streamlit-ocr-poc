@@ -22,13 +22,14 @@ def review(
     *,
     score: int,
     official: bool = True,
+    rule: bool = True,
 ) -> dict:
     return {
         "violation_type": violation_type,
         "status": "HIGH" if score >= 8 else "REVIEW",
         "risk_score": score,
         "expression_ids": expression_ids,
-        "rule_ids": [],
+        "rule_ids": ["RULE-1"] if rule else [],
         "official_evidence_ids": ["OFFICIAL-1"] if official else [],
         "case_ids": [],
         "score_factors": [],
@@ -148,6 +149,54 @@ def test_same_representative_is_returned_once_with_both_reasons() -> None:
         {
             "article_item": 1,
             "article_name": "질병 예방·치료 효능",
+            "risk_score": 10,
+            "occurrence_count": 1,
+            "selected_by": ["most_frequent", "highest_risk"],
+        }
+    ]
+
+
+def test_missing_rule_is_unresolved_and_not_scored() -> None:
+    output = {
+        "problem_expressions": [expression("E1")],
+        "violation_reviews": [
+            review(
+                "DISEASE_PREVENTION_TREATMENT",
+                ["E1"],
+                score=10,
+                rule=False,
+            )
+        ],
+        "uncertainty_codes": [],
+        "requires_human_review": False,
+    }
+
+    apply_deterministic_review_scores(output)
+
+    finding = output["violation_reviews"][0]
+    assert finding["risk_score"] == 0
+    assert finding["status"] == "INSUFFICIENT_EVIDENCE"
+    assert "SEARCH_NO_RULE" in finding["uncertainty_codes"]
+    assert "SEARCH_NO_RULE" in output["uncertainty_codes"]
+    assert output["requires_human_review"] is True
+
+
+def test_item_one_wins_exact_item_one_item_two_penalty_tie() -> None:
+    product = {
+        "product_index": 0,
+        "problem_expressions": [expression("E1"), expression("E2")],
+        "violation_reviews": [
+            review("MEDICINE_CONFUSION", ["E1"], score=10),
+            review("DISEASE_PREVENTION_TREATMENT", ["E2"], score=10),
+        ],
+    }
+
+    result = build_deterministic_aggregation([product])
+
+    assert result["representative_types"] == [
+        {
+            "article_item": 1,
+            "article_name": result["article_summaries"][0]["article_name"],
             "risk_score": 10,
             "occurrence_count": 1,
             "selected_by": ["most_frequent", "highest_risk"],

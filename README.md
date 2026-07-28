@@ -45,11 +45,14 @@ python -m streamlit run streamlit_app.py
 
 대표유형은 다음 두 기준을 각각 산출한다.
 
-- 최다빈도: 발생횟수 → 위험도 → 최고위험 근거수 → 최초 위치 → 조항번호
-- 최고위험: 위험도 → 최고위험 근거수 → 발생횟수 → 최초 최고위험 위치 → 조항번호
+- 최다빈도: 발생횟수 → 위험도 → 최고위험 근거수 → 행정처분 우선순위 →
+  최초 위치 → 조항번호
+- 최고위험: 위험도 → 최고위험 근거수 → 발생횟수 → 행정처분 우선순위 →
+  최초 최고위험 위치 → 조항번호
 
 두 결과가 같으면 하나의 대표유형에 두 선정기준을 함께 표시한다. 현재
-PoC Schema에는 문자 오프셋이 없으므로 중복 제거 단위는 제품·조항·
+제1호와 제2호가 완전히 동률이면 행정처분 강도가 높은 제1호를 대표로
+선정한다. PoC Schema에는 문자 오프셋이 없으므로 중복 제거 단위는 제품·조항·
 판단유형별 고유 `expression_id`이다. 비교·비방은 현행 제1호~제5호
 집계 범위 밖이므로 탐지 후보에는 남기되 결정론적 전체 위험도와
 대표유형에는 포함하지 않는다.
@@ -69,4 +72,25 @@ Release 자산은 83,687행 공개 승인 원천 CSV에서 재현 가능하게 �
 python scripts/build_product_master.py `
   --source "C:\path\mfds_health_functional_food_product_master_83687.csv" `
   --output ".codex_tmp\mfds_health_functional_food_product_master_83687.sqlite3"
+```
+
+## Rule 전용 검색
+
+위반유형 후보가 탐지되면 혼합 검색 결과에 의존하지 않고 후보별 Rule
+검색을 별도로 실행한다. File Search 파일의 `record_class=RULE`,
+`violation_type`, `active=true` attributes를 API 필터로 강제하며, 1차
+검색이 비어 있으면 동의어를 포함한 보완 질의로 한 번 더 검색한다.
+
+활성 위반항목에는 실제 검색된 `RULE::` ID가 하나 이상 필요하다. Rule이
+확보되지 않으면 위험도와 대표유형 집계에서 제외하고
+`SEARCH_NO_RULE`, `INSUFFICIENT_EVIDENCE`로 담당자 검토에 전달한다.
+
+검증된 원천 JSONL에서 필터 가능한 Rule 파일을 생성·동기화하는 명령은
+다음과 같다. 생성 파일은 `.codex_tmp`에만 남고 공개 저장소에 커밋하지
+않는다.
+
+```powershell
+python scripts/sync_rule_corpus.py `
+  --source-root "C:\path\filesearch_upload" `
+  --apply
 ```

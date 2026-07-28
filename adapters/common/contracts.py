@@ -36,15 +36,19 @@ class ProviderResult:
     file_search_run: bool
     retrieved_ids: list[str] = field(default_factory=list)
     citations: list[SearchCitation] = field(default_factory=list)
+    supplemental_queries: list[str] = field(default_factory=list)
     latency_ms: int = 0
     raw_response_id: str | None = None
 
     def tracking(self, query: str) -> dict[str, Any]:
+        search_query = " | ".join(
+            dict.fromkeys([query, *self.supplemental_queries])
+        )
         return {
             "provider": self.provider,
             "store_alias": self.store_alias,
             "file_search_run": self.file_search_run,
-            "search_query": query,
+            "search_query": search_query,
             "retrieved_ids": self.retrieved_ids,
             "citations": [
                 {

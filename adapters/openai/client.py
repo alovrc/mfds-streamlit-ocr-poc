@@ -30,6 +30,57 @@ RECORD_ID_PATTERN = re.compile(
     r'(?:record_id|영구 ID)["\s:=]+([A-Za-z0-9_.:/-]+)',
     re.IGNORECASE,
 )
+RULE_ID_PATTERN = re.compile(r"RULE::[A-Za-z0-9_.:/-]+")
+ACTIVE_REVIEW_STATUSES = {"HIGH", "REVIEW", "LOW"}
+RULE_FILTER_TYPES = {
+    "DISEASE_PREVENTION_TREATMENT": "DISEASE_PREVENTION_TREATMENT",
+    "MEDICINE_CONFUSION": "MEDICINE_CONFUSION",
+    "HFF_CONFUSION": "HFF_CONFUSION",
+    "UNAPPROVED_FUNCTION": "FALSE_EXAGGERATED",
+    "FALSE_EXAGGERATED": "FALSE_EXAGGERATED",
+    "CONSUMER_DECEPTION": "CONSUMER_DECEPTION",
+    "INGREDIENT_TO_PRODUCT_EFFECT": "CONSUMER_DECEPTION",
+    "TESTIMONIAL_EFFECT": "CONSUMER_DECEPTION",
+    "EXPERT_ENDORSEMENT": "CONSUMER_DECEPTION",
+}
+RULE_QUERY_TERMS = {
+    "DISEASE_PREVENTION_TREATMENT": (
+        "질병 예방 치료 효능 제8조제1항제1호",
+        "질병 치료 예방 완치 개선 효능 식품 광고 적용 기준",
+    ),
+    "MEDICINE_CONFUSION": (
+        "의약품 오인 혼동 제8조제1항제2호",
+        "약 의약품 대체 소염 진통 치료 성분 식품 광고 적용 기준",
+    ),
+    "HFF_CONFUSION": (
+        "건강기능식품 오인 혼동 제8조제1항제3호",
+        "일반식품 영양제 건강기능식품으로 오인 광고 적용 기준",
+    ),
+    "UNAPPROVED_FUNCTION": (
+        "인정받지 않은 기능성 제8조제1항제4호",
+        "미인정 기능성 거짓 과장 식품 광고 적용 기준",
+    ),
+    "FALSE_EXAGGERATED": (
+        "거짓 과장 제8조제1항제4호",
+        "기능 효과 과장 식품 광고 적용 기준",
+    ),
+    "CONSUMER_DECEPTION": (
+        "소비자 기만 제8조제1항제5호",
+        "체험기 원재료 효능 제품 효능 전환 식품 광고 적용 기준",
+    ),
+    "INGREDIENT_TO_PRODUCT_EFFECT": (
+        "원재료 성분 효능을 제품 효능으로 광고 제8조제1항제5호",
+        "소비자 기만 원재료 연구논문 제품 효과 적용 기준",
+    ),
+    "TESTIMONIAL_EFFECT": (
+        "체험기 이용 효능 광고 제8조제1항제5호",
+        "소비자 기만 사용 후기 체험 효과 적용 기준",
+    ),
+    "EXPERT_ENDORSEMENT": (
+        "전문가 단체 추천 보증 제8조제1항제5호",
+        "소비자 기만 전문가 인증 보증 광고 적용 기준",
+    ),
+}
 
 
 def _resolve_vector_store_id(client: OpenAI, store_alias: str) -> str:
@@ -222,6 +273,183 @@ def _retrieval_metadata(response: Any) -> tuple[bool, list[str], list[SearchCita
     return file_search_run, list(dict.fromkeys(retrieved)), unique_citations
 
 
+def _vector_search_metadata(
+    response: Any,
+) -> tuple[list[str], list[SearchCitation]]:
+    """Extract only real Rule IDs from a filtered vector-store search."""
+
+    payload = _as_dict(response)
+    retrieved: list[str] = []
+    citations: list[SearchCitation] = []
+    for result in payload.get("data", []):
+        if not isinstance(result, dict):
+            continue
+        file_id = str(result.get("file_id") or "").strip()
+        file_name = result.get("filename")
+        texts = [
+            str(item.get("text") or "")
+            for item in result.get("content", [])
+            if isinstance(item, dict)
+        ]
+        text = "\n".join(texts)
+        for record_id in RULE_ID_PATTERN.findall(text):
+            retrieved.append(record_id)
+            citations.append(
+                SearchCitation(
+                    record_id=record_id,
+                    file_name=file_name,
+                    source=file_id or None,
+                    page=None,
+                    excerpt=_search_excerpt(text, record_id),
+                )
+            )
+    unique_ids = list(dict.fromkeys(retrieved))
+    unique_citations = list(
+        {
+            (item.record_id, item.file_name): item
+            for item in citations
+        }.values()
+    )
+    return unique_ids, unique_citations
+
+
+def _candidate_review(review: dict[str, Any]) -> bool:
+    score = review.get("risk_score")
+    return (
+        review.get("status") in ACTIVE_REVIEW_STATUSES
+        or (type(score) is int and score > 0)
+    )
+
+
+def _expression_quotes(
+    data: dict[str, Any],
+    review: dict[str, Any],
+) -> list[str]:
+    wanted = {str(value) for value in review.get("expression_ids", [])}
+    return [
+        str(item.get("quote") or "").strip()
+        for item in data.get("problem_expressions", [])
+        if str(item.get("expression_id") or "") in wanted
+        and str(item.get("quote") or "").strip()
+    ]
+
+
+def _retrieve_missing_rules(
+    *,
+    client: OpenAI,
+    vector_store_id: str,
+    payload: dict[str, Any],
+    data: dict[str, Any],
+) -> tuple[list[str], list[SearchCitation], list[str]]:
+    """Force candidate-specific Rule retrieval with file attribute filters."""
+
+    retrieved: list[str] = []
+    citations: list[SearchCitation] = []
+    queries: list[str] = []
+
+    for review in data.get("violation_reviews", []):
+        if not _candidate_review(review):
+            continue
+        violation_type = str(review.get("violation_type") or "")
+        filter_type = RULE_FILTER_TYPES.get(violation_type)
+        query_terms = RULE_QUERY_TERMS.get(violation_type)
+        if not filter_type or not query_terms:
+            continue
+
+        quotes = _expression_quotes(data, review)
+        stage1_product = payload.get("stage1_product", {})
+        if not isinstance(stage1_product, dict):
+            stage1_product = {}
+        product_context = " ".join(
+            str(value or "")
+            for value in (
+                payload.get("product_type"),
+                payload.get("product_subtype"),
+                stage1_product.get("product_name"),
+            )
+        ).strip()
+        matched_ids: list[str] = []
+        matched_citations: list[SearchCitation] = []
+
+        for attempt, base_query in enumerate(query_terms):
+            quote_context = " ".join(quotes[:4])
+            query = " ".join(
+                value
+                for value in (base_query, product_context, quote_context)
+                if value
+            )
+            if attempt:
+                query = f"{query} 판정 룰 조건 표현 법적 적용"
+            queries.append(query)
+            response = client.vector_stores.search(
+                vector_store_id=vector_store_id,
+                query=query,
+                filters={
+                    "type": "and",
+                    "filters": [
+                        {
+                            "type": "eq",
+                            "key": "record_class",
+                            "value": "RULE",
+                        },
+                        {
+                            "type": "eq",
+                            "key": "violation_type",
+                            "value": filter_type,
+                        },
+                        {
+                            "type": "eq",
+                            "key": "active",
+                            "value": True,
+                        },
+                    ],
+                },
+                max_num_results=10,
+                rewrite_query=False,
+            )
+            matched_ids, matched_citations = _vector_search_metadata(
+                response
+            )
+            if matched_ids:
+                break
+
+        if matched_ids:
+            review["rule_ids"] = matched_ids
+            review["uncertainty_codes"] = [
+                value
+                for value in review.get("uncertainty_codes", [])
+                if value != "SEARCH_NO_RULE"
+            ]
+            retrieved.extend(matched_ids)
+            citations.extend(matched_citations)
+        else:
+            uncertainty = review.setdefault("uncertainty_codes", [])
+            if "SEARCH_NO_RULE" not in uncertainty:
+                uncertainty.append("SEARCH_NO_RULE")
+
+    unresolved = any(
+        _candidate_review(review) and not review.get("rule_ids")
+        for review in data.get("violation_reviews", [])
+        if str(review.get("violation_type") or "") in RULE_FILTER_TYPES
+    )
+    if not unresolved:
+        data["uncertainty_codes"] = [
+            value
+            for value in data.get("uncertainty_codes", [])
+            if value != "SEARCH_NO_RULE"
+        ]
+    return (
+        list(dict.fromkeys(retrieved)),
+        list(
+            {
+                (item.record_id, item.file_name): item
+                for item in citations
+            }.values()
+        ),
+        queries,
+    )
+
+
 def run(
     *,
     system_prompt: str,
@@ -280,6 +508,25 @@ def run(
             file_search_run, retrieved_ids, citations = _retrieval_metadata(response)
             if not file_search_run:
                 raise ProviderResponseError("FILE_SEARCH_NOT_RUN")
+            (
+                rule_ids,
+                rule_citations,
+                supplemental_queries,
+            ) = _retrieve_missing_rules(
+                client=client,
+                vector_store_id=vector_store_id,
+                payload=payload,
+                data=data,
+            )
+            retrieved_ids = list(
+                dict.fromkeys([*retrieved_ids, *rule_ids])
+            )
+            citations = list(
+                {
+                    (item.record_id, item.file_name): item
+                    for item in [*citations, *rule_citations]
+                }.values()
+            )
             return ProviderResult(
                 data=data,
                 provider="openai",
@@ -287,6 +534,7 @@ def run(
                 file_search_run=True,
                 retrieved_ids=retrieved_ids,
                 citations=citations,
+                supplemental_queries=supplemental_queries,
                 latency_ms=int((time.perf_counter() - started) * 1000),
                 raw_response_id=getattr(response, "id", None),
             )
