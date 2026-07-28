@@ -16,6 +16,10 @@ sys.path.insert(0, str(PACKAGE_ROOT))
 
 from adapters.common import offline
 from product_master import ProductMasterLookup, lookup_product
+from risk_aggregation import (
+    apply_deterministic_review_scores,
+    build_deterministic_aggregation,
+)
 from validators.core import (
     ContractValidationError,
     STATUS_BY_SCORE,
@@ -266,35 +270,10 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
         )
     quarantine_invalid_problem_expressions(payload, result.data)
     apply_food_hff_confusion_guardrail(payload, result.data)
-    cap_high_risk_without_official_evidence(result.data)
+    apply_deterministic_review_scores(result.data)
     normalize_stage2_statuses(result.data)
     validate_stage2(payload, result.data)
     return result.data
-
-
-def cap_high_risk_without_official_evidence(output: dict[str, Any]) -> None:
-    """Cap unsupported HIGH findings at REVIEW and retain an audit flag."""
-
-    capped = False
-    for review in output.get("violation_reviews", []):
-        score = review.get("risk_score")
-        if (
-            type(score) is int
-            and score >= 8
-            and not review.get("official_evidence_ids")
-        ):
-            review["risk_score"] = 7
-            uncertainty = review.setdefault("uncertainty_codes", [])
-            if "SEARCH_NO_OFFICIAL_EVIDENCE" not in uncertainty:
-                uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
-            capped = True
-
-    if not capped:
-        return
-    product_uncertainty = output.setdefault("uncertainty_codes", [])
-    if "SEARCH_NO_OFFICIAL_EVIDENCE" not in product_uncertainty:
-        product_uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
-    output["requires_human_review"] = True
 
 
 def quarantine_invalid_problem_expressions(
@@ -497,10 +476,10 @@ def aggregate(
     stage1_output: dict[str, Any],
     product_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    risk = max(
-        (item["product_overall_risk_score"] for item in product_results),
-        default=0,
+    deterministic_aggregation = build_deterministic_aggregation(
+        product_results
     )
+    risk = deterministic_aggregation["overall_risk_score"]
     insufficient = any(
         item["product_overall_status"] == "INSUFFICIENT_EVIDENCE"
         for item in product_results
@@ -513,6 +492,7 @@ def aggregate(
             "INSUFFICIENT_EVIDENCE" if insufficient else STATUS_BY_SCORE[risk]
         ),
         "record_overall_risk_score": risk,
+        "deterministic_aggregation": deterministic_aggregation,
         "requires_human_review": (
             stage1_output["requires_human_review"]
             or any(item["requires_human_review"] for item in product_results)

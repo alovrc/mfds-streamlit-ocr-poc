@@ -181,12 +181,24 @@ def validate_aggregate(aggregate: dict[str, Any]) -> None:
         raise ContractValidationError("multi-product stage2 result omission")
     if not result_indexes.issubset(indexes):
         raise ContractValidationError("unknown product_index in aggregate")
-    expected = max(
-        (item["product_overall_risk_score"] for item in aggregate["product_results"]),
-        default=0,
-    )
+    deterministic = aggregate["deterministic_aggregation"]
+    expected = deterministic["overall_risk_score"]
     if aggregate["record_overall_risk_score"] != expected:
         raise ContractValidationError("record RISK_AGGREGATION_MISMATCH")
+    article_items = [
+        item["article_item"] for item in deterministic["article_summaries"]
+    ]
+    if article_items != [1, 2, 3, 4, 5]:
+        raise ContractValidationError(
+            "deterministic article summaries must be ordered 1..5"
+        )
+    if deterministic["total_occurrence_count"] != sum(
+        item["occurrence_count"]
+        for item in deterministic["article_summaries"]
+    ):
+        raise ContractValidationError(
+            "deterministic occurrence count mismatch"
+        )
     if aggregate["record_id"] != aggregate["stage1"]["record_id"]:
         raise ContractValidationError("aggregate/stage1 record_id mismatch")
 

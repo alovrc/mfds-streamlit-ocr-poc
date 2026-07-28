@@ -1,8 +1,8 @@
 from scripts.run_pipeline import (
-    cap_high_risk_without_official_evidence,
     quarantine_invalid_problem_expressions,
     sanitize_unicode_surrogates,
 )
+from risk_aggregation import apply_deterministic_review_scores
 
 
 def test_sanitize_unicode_surrogates_recursively() -> None:
@@ -64,17 +64,41 @@ def test_quarantine_invalid_problem_expression() -> None:
     assert output["requires_human_review"] is True
 
 
-def test_cap_high_risk_without_official_evidence() -> None:
+def test_deterministic_high_risk_without_official_evidence_is_quarantined() -> None:
     output = {
+        "problem_expressions": [
+            {
+                "expression_id": "E1",
+                "quote": "질병 치료",
+                "source_field": "body_text",
+                "product_linked": True,
+            },
+            {
+                "expression_id": "E2",
+                "quote": "기능성 과장",
+                "source_field": "body_text",
+                "product_linked": True,
+            },
+        ],
         "violation_reviews": [
             {
+                "violation_type": "DISEASE_PREVENTION_TREATMENT",
+                "status": "HIGH",
                 "risk_score": 9,
+                "expression_ids": ["E1"],
                 "official_evidence_ids": [],
+                "score_factors": [],
+                "score_reason": "candidate",
                 "uncertainty_codes": [],
             },
             {
+                "violation_type": "FALSE_EXAGGERATED",
+                "status": "HIGH",
                 "risk_score": 8,
+                "expression_ids": ["E2"],
                 "official_evidence_ids": ["OFFICIAL-1"],
+                "score_factors": [],
+                "score_reason": "candidate",
                 "uncertainty_codes": [],
             },
         ],
@@ -82,13 +106,15 @@ def test_cap_high_risk_without_official_evidence() -> None:
         "requires_human_review": False,
     }
 
-    cap_high_risk_without_official_evidence(output)
+    apply_deterministic_review_scores(output)
 
-    assert output["violation_reviews"][0]["risk_score"] == 7
+    assert output["violation_reviews"][0]["risk_score"] == 0
+    assert output["violation_reviews"][0]["status"] == "INSUFFICIENT_EVIDENCE"
     assert (
         "SEARCH_NO_OFFICIAL_EVIDENCE"
         in output["violation_reviews"][0]["uncertainty_codes"]
     )
     assert output["violation_reviews"][1]["risk_score"] == 8
+    assert output["violation_reviews"][1]["status"] == "HIGH"
     assert "SEARCH_NO_OFFICIAL_EVIDENCE" in output["uncertainty_codes"]
     assert output["requires_human_review"] is True

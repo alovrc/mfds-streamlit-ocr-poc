@@ -1,4 +1,5 @@
 from markdown_report import build_markdown_report
+from risk_aggregation import build_deterministic_aggregation
 
 
 def sample_output() -> dict:
@@ -93,8 +94,12 @@ def sample_output() -> dict:
 
 
 def test_markdown_report_contains_decision_and_traceability() -> None:
+    output = sample_output()
+    output["deterministic_aggregation"] = build_deterministic_aggregation(
+        output["product_results"]
+    )
     report = build_markdown_report(
-        sample_output(),
+        output,
         "openai",
         {
             "platform": "네이버 블로그",
@@ -114,6 +119,9 @@ def test_markdown_report_contains_decision_and_traceability() -> None:
     assert "FS11_FOOD_REVIEW" in report
     assert "file-2" in report
     assert "최종 판단 전 담당자" in report
+    assert "결정론적 위험도·대표유형 집계" in report
+    assert "2026-07-28-poc-1" in report
+    assert "최다빈도, 최고위험" in report
 
 
 def test_markdown_report_deduplicates_citations_per_store() -> None:

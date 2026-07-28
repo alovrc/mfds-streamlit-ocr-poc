@@ -701,6 +701,163 @@
       "minimum": 0,
       "maximum": 10
     },
+    "deterministic_aggregation": {
+      "type": "object",
+      "properties": {
+        "rules_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rules_source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scope": {
+          "type": "string",
+          "const": "MFDS_ARTICLE_8_1_ITEMS_1_TO_5"
+        },
+        "score_policy": {
+          "type": "string",
+          "const": "MAX_PER_ARTICLE_NO_SUM_OR_AVERAGE"
+        },
+        "occurrence_unit": {
+          "type": "string",
+          "const": "UNIQUE_EXPRESSION_ID_PER_PRODUCT_ARTICLE_REASON"
+        },
+        "overall_risk_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "total_occurrence_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "article_summaries": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "properties": {
+              "article_item": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "article_name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "occurrence_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "risk_score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "highest_risk_occurrence_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "first_occurrence_order": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "first_highest_risk_occurrence_order": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "violation_types": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "article_item",
+              "article_name",
+              "occurrence_count",
+              "risk_score",
+              "highest_risk_occurrence_count",
+              "first_occurrence_order",
+              "first_highest_risk_occurrence_order",
+              "violation_types"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "representative_types": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "properties": {
+              "article_item": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5
+              },
+              "article_name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "risk_score": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "occurrence_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "selected_by": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "most_frequent",
+                    "highest_risk"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "article_item",
+              "article_name",
+              "risk_score",
+              "occurrence_count",
+              "selected_by"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "rules_version",
+        "rules_source_sha256",
+        "scope",
+        "score_policy",
+        "occurrence_unit",
+        "overall_risk_score",
+        "total_occurrence_count",
+        "article_summaries",
+        "representative_types"
+      ],
+      "additionalProperties": false
+    },
     "requires_human_review": {
       "type": "boolean"
     },
@@ -745,6 +902,7 @@
     "product_results",
     "record_overall_status",
     "record_overall_risk_score",
+    "deterministic_aggregation",
     "requires_human_review",
     "error_codes"
   ],

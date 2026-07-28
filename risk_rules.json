@@ -1,0 +1,108 @@
+{
+  "rules_version": "2026-07-28-poc-1",
+  "scope": "MFDS_ARTICLE_8_1_ITEMS_1_TO_5",
+  "score_policy": "MAX_PER_ARTICLE_NO_SUM_OR_AVERAGE",
+  "occurrence_unit": "UNIQUE_EXPRESSION_ID_PER_PRODUCT_ARTICLE_REASON",
+  "source_document": "시범모델 위험도 분석·집계 운영기준.docx",
+  "source_sha256": "821f7bd093c44b3c1fbd491117da2a2964c578fa6f0d3a91152fdc54eb6fb4df",
+  "article_names": {
+    "1": "질병 예방·치료 효능",
+    "2": "의약품 오인·혼동",
+    "3": "건강기능식품 오인·혼동",
+    "4": "거짓·과장",
+    "5": "소비자 기만"
+  },
+  "violation_rules": {
+    "DISEASE_PREVENTION_TREATMENT": {
+      "article_item": 1,
+      "risk_score": 10,
+      "risk_code": "R10_DISEASE_PREVENTION_TREATMENT",
+      "risk_name": "질병 예방·치료 효능",
+      "aggregate": true
+    },
+    "MEDICINE_CONFUSION": {
+      "article_item": 2,
+      "risk_score": 10,
+      "risk_code": "R10_MEDICINE_CONFUSION",
+      "risk_name": "의약품 오인·혼동",
+      "aggregate": true
+    },
+    "HFF_CONFUSION": {
+      "article_item": 3,
+      "risk_score": 9,
+      "risk_code": "R9_HFF_CONFUSION",
+      "risk_name": "건강기능식품 오인·혼동",
+      "aggregate": true
+    },
+    "UNAPPROVED_FUNCTION": {
+      "article_item": 4,
+      "risk_score": 9,
+      "risk_code": "R9_UNAPPROVED_FUNCTION",
+      "risk_name": "미인정 기능성·인증 오인",
+      "aggregate": true
+    },
+    "FALSE_EXAGGERATED": {
+      "article_item": 4,
+      "risk_score": 8,
+      "risk_code": "R8_FALSE_EXAGGERATED",
+      "risk_name": "신체조직·기능 거짓·과장",
+      "aggregate": true
+    },
+    "CONSUMER_DECEPTION": {
+      "article_item": 5,
+      "risk_score": 7,
+      "risk_code": "R7_CONSUMER_DECEPTION_GENERIC",
+      "risk_name": "소비자 기만 일반",
+      "aggregate": true,
+      "shadowed_by": [
+        "INGREDIENT_TO_PRODUCT_EFFECT",
+        "TESTIMONIAL_EFFECT",
+        "EXPERT_ENDORSEMENT"
+      ]
+    },
+    "INGREDIENT_TO_PRODUCT_EFFECT": {
+      "article_item": 5,
+      "risk_score": 8,
+      "risk_code": "R8_INGREDIENT_TO_PRODUCT_EFFECT",
+      "risk_name": "원재료 효능의 완제품 효능 전환",
+      "aggregate": true
+    },
+    "TESTIMONIAL_EFFECT": {
+      "article_item": 5,
+      "risk_score": 7,
+      "risk_code": "R7_TESTIMONIAL_EFFECT",
+      "risk_name": "체험기 이용 효능 광고",
+      "aggregate": true
+    },
+    "EXPERT_ENDORSEMENT": {
+      "article_item": 5,
+      "risk_score": 7,
+      "risk_code": "R7_EXPERT_ENDORSEMENT",
+      "risk_name": "전문가·단체 추천·보증",
+      "aggregate": true
+    },
+    "COMPARISON_DEFAMATION": {
+      "article_item": null,
+      "risk_score": null,
+      "risk_code": "OUT_OF_SCOPE_COMPARISON_DEFAMATION",
+      "risk_name": "비교·비방",
+      "aggregate": false
+    }
+  },
+  "representative_selection": {
+    "most_frequent": [
+      "occurrence_count_desc",
+      "risk_score_desc",
+      "highest_risk_occurrence_count_desc",
+      "first_occurrence_order_asc",
+      "article_item_asc"
+    ],
+    "highest_risk": [
+      "risk_score_desc",
+      "highest_risk_occurrence_count_desc",
+      "occurrence_count_desc",
+      "first_highest_risk_occurrence_order_asc",
+      "article_item_asc"
+    ]
+  }
+}

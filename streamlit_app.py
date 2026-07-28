@@ -263,6 +263,69 @@ def render_results() -> None:
             third.metric(
                 "담당자 검토", "필요" if output["requires_human_review"] else "불필요"
             )
+            deterministic = output.get("deterministic_aggregation", {})
+            if deterministic:
+                st.subheader("결정론적 위험도·대표유형 집계")
+                total, rules_version = st.columns(2)
+                total.metric(
+                    "유효 발생근거 수",
+                    deterministic.get("total_occurrence_count", 0),
+                )
+                rules_version.metric(
+                    "집계 규칙 버전",
+                    deterministic.get("rules_version", "-"),
+                )
+                representative_labels = {
+                    "most_frequent": "최다빈도",
+                    "highest_risk": "최고위험",
+                }
+                representatives = [
+                    {
+                        "조항": f"제{item['article_item']}호",
+                        "대표유형": item["article_name"],
+                        "발생횟수": item["occurrence_count"],
+                        "위험도": item["risk_score"],
+                        "선정기준": ", ".join(
+                            representative_labels.get(value, value)
+                            for value in item["selected_by"]
+                        ),
+                    }
+                    for item in deterministic.get(
+                        "representative_types", []
+                    )
+                ]
+                if representatives:
+                    st.dataframe(
+                        representatives,
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("집계 가능한 유효 발생근거가 없습니다.")
+                with st.expander("제1호~제5호 집계 상세"):
+                    st.dataframe(
+                        [
+                            {
+                                "조항": f"제{item['article_item']}호",
+                                "유형": item["article_name"],
+                                "발생횟수": item["occurrence_count"],
+                                "위험도": item["risk_score"],
+                                "최고위험 근거수": item[
+                                    "highest_risk_occurrence_count"
+                                ],
+                            }
+                            for item in deterministic.get(
+                                "article_summaries", []
+                            )
+                        ],
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+                    st.caption(
+                        "조항별 위험도는 유효 발생근거의 최댓값이며 "
+                        "합산·평균하지 않습니다. PoC 중복 제거는 제품·조항·"
+                        "판단유형별 고유 expression_id를 기준으로 합니다."
+                    )
             render_independent_report(report)
             with st.expander("원본 1·2단계 모델 결과"):
                 st.json(output, expanded=False)

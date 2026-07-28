@@ -91,6 +91,9 @@ def independent_review_output(output: dict[str, Any]) -> dict[str, Any]:
             "항목입니다. 최종 판단 전 담당자가 원문과 검색 근거를 확인해야 "
             "합니다."
         ),
+        "deterministic_aggregation": output.get(
+            "deterministic_aggregation", {}
+        ),
         "raw_model_summary": {
             "record_overall_status": output.get("record_overall_status"),
             "record_overall_risk_score": output.get(

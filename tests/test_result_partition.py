@@ -72,5 +72,6 @@ def test_report_contains_only_independent_review_fields() -> None:
         "record_id",
         "independent_findings",
         "independent_findings_scope",
+        "deterministic_aggregation",
         "raw_model_summary",
     }

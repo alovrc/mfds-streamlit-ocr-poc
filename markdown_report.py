@@ -134,6 +134,103 @@ def build_markdown_report(
         )
     )
 
+    deterministic = output.get("deterministic_aggregation", {})
+    if deterministic:
+        lines.extend(
+            [
+                "",
+                "### 2.1 결정론적 위험도·대표유형 집계",
+                "",
+                (
+                    f"- 규칙 버전: `{_text(deterministic.get('rules_version'))}`"
+                ),
+                (
+                    "- 운영기준 SHA-256: "
+                    f"`{_text(deterministic.get('rules_source_sha256'))}`"
+                ),
+                (
+                    "- 집계 범위: 「식품 등의 표시·광고에 관한 법률」 "
+                    "제8조제1항 제1호~제5호"
+                ),
+                (
+                    "- 점수 원칙: 조항별 유효 발생근거의 최댓값을 사용하며 "
+                    "합산·평균하지 않음"
+                ),
+                (
+                    "- PoC 발생 단위: 제품·조항·판단유형별 고유 "
+                    "`expression_id`"
+                ),
+                "",
+            ]
+        )
+        lines.extend(
+            _table(
+                (
+                    "조항",
+                    "대표유형",
+                    "발생횟수",
+                    "위험도",
+                    "최고위험 근거수",
+                    "연결 판단유형",
+                ),
+                [
+                    (
+                        f"제{item.get('article_item')}호",
+                        item.get("article_name"),
+                        item.get("occurrence_count"),
+                        item.get("risk_score"),
+                        item.get("highest_risk_occurrence_count"),
+                        item.get("violation_types"),
+                    )
+                    for item in deterministic.get(
+                        "article_summaries", []
+                    )
+                ],
+            )
+        )
+        representative_rows = []
+        for item in deterministic.get("representative_types", []):
+            selected_by = {
+                "most_frequent": "최다빈도",
+                "highest_risk": "최고위험",
+            }
+            representative_rows.append(
+                (
+                    f"제{item.get('article_item')}호",
+                    item.get("article_name"),
+                    item.get("occurrence_count"),
+                    item.get("risk_score"),
+                    [
+                        selected_by.get(value, value)
+                        for value in item.get("selected_by", [])
+                    ],
+                )
+            )
+        lines.extend(["", "#### 대표유형", ""])
+        lines.extend(
+            _table(
+                (
+                    "조항",
+                    "대표유형",
+                    "발생횟수",
+                    "위험도",
+                    "선정기준",
+                ),
+                representative_rows,
+            )
+        )
+        lines.extend(
+            [
+                "",
+                (
+                    "동일 `expression_id`는 같은 제품·조항·판단유형에서 "
+                    "한 번만 집계합니다. 현재 PoC Schema에는 문자 위치 "
+                    "오프셋이 없어 겹침 위치 판정 대신 `expression_id`를 "
+                    "사용합니다."
+                ),
+            ]
+        )
+
     lines.extend(["", "## 3. 제품 분류·신뢰도·라우팅", ""])
     product_rows: list[tuple[Any, ...]] = []
     for product in output.get("product_results", []):
