@@ -55,17 +55,9 @@ def require_password() -> None:
         return
 
     try:
+        salt = str(st.secrets["APP_PASSWORD_SALT"])
+        expected = str(st.secrets["APP_PASSWORD_HASH"])
         iterations = int(st.secrets.get("APP_PASSWORD_ITERATIONS", 600_000))
-        credentials = [
-            (
-                str(st.secrets["APP_PASSWORD_SALT"]),
-                str(st.secrets["APP_PASSWORD_HASH"]),
-            )
-        ]
-        smoke_salt = str(st.secrets.get("SMOKE_PASSWORD_SALT", ""))
-        smoke_hash = str(st.secrets.get("SMOKE_PASSWORD_HASH", ""))
-        if smoke_salt and smoke_hash:
-            credentials.append((smoke_salt, smoke_hash))
     except (FileNotFoundError, KeyError, TypeError, ValueError):
         st.error("앱 인증 설정이 없습니다. 관리자에게 문의하세요.")
         st.stop()
@@ -77,10 +69,7 @@ def require_password() -> None:
         submitted = st.form_submit_button("로그인", type="primary")
 
     if submitted:
-        if any(
-            verify_password(password, salt, expected, iterations)
-            for salt, expected in credentials
-        ):
+        if verify_password(password, salt, expected, iterations):
             st.session_state.authenticated = True
             st.session_state.login_failures = 0
             st.rerun()
