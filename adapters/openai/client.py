@@ -142,13 +142,18 @@ def _retrieval_metadata(response: Any) -> tuple[bool, list[str], list[SearchCita
                         continue
                     text = str(result.get("text") or "")
                     record_ids = RECORD_ID_PATTERN.findall(text)
-                    retrieved.extend(record_ids)
-                    for record_id in record_ids:
+                    file_id = str(result.get("file_id") or "").strip()
+                    file_name = result.get("filename")
+                    citation_ids = record_ids or [
+                        value for value in (file_id, file_name) if value
+                    ][:1]
+                    retrieved.extend(record_ids or ([file_id] if file_id else []))
+                    for record_id in citation_ids:
                         citations.append(
                             SearchCitation(
                                 record_id=record_id,
-                                file_name=result.get("filename"),
-                                source=result.get("file_id"),
+                                file_name=file_name,
+                                source=file_id or None,
                                 page=None,
                             )
                         )
