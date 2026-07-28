@@ -27,6 +27,7 @@ def test_file_result_without_record_id_keeps_file_level_citation() -> None:
     assert citations[0].record_id == "file-FOODCODE"
     assert citations[0].file_name == "food_code_2026_40_ch1_5.md"
     assert citations[0].source == "file-FOODCODE"
+    assert citations[0].excerpt == "식품의 기준 및 규격 고시전문 본문"
 
 
 def test_record_level_citations_still_take_precedence() -> None:
@@ -50,3 +51,37 @@ def test_record_level_citations_still_take_precedence() -> None:
     assert retrieved_ids == ["CASE-001"]
     assert citations[0].record_id == "CASE-001"
     assert citations[0].file_name == "cases.md"
+    assert citations[0].excerpt == "record_id: CASE-001"
+
+
+def test_search_excerpt_replaces_annotation_without_excerpt() -> None:
+    response = {
+        "output": [
+            {
+                "type": "message",
+                "content": [
+                    {
+                        "type": "file_citation",
+                        "record_id": "RULE-001",
+                        "filename": "rules.md",
+                        "file_id": "file-RULE",
+                    }
+                ],
+            },
+            {
+                "type": "file_search_call",
+                "results": [
+                    {
+                        "file_id": "file-RULE",
+                        "filename": "rules.md",
+                        "text": "record_id: RULE-001 적용 기준 원문",
+                    }
+                ],
+            },
+        ]
+    }
+
+    _, _, citations = _retrieval_metadata(response)
+
+    assert len(citations) == 1
+    assert citations[0].excerpt == "record_id: RULE-001 적용 기준 원문"

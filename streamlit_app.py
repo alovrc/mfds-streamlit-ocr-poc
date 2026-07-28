@@ -212,6 +212,32 @@ def render_input() -> dict[str, Any]:
     }
 
 
+def render_evidence_group(
+    label: str,
+    evidence: list[dict[str, Any]],
+) -> None:
+    """Render evidence IDs together with their File Search provenance."""
+
+    st.markdown(f"**{label}**")
+    if not evidence:
+        st.caption("연결된 근거가 없습니다.")
+        return
+    for item in evidence:
+        record_id = item.get("record_id") or "-"
+        file_name = item.get("file_name") or "파일명 확인 불가"
+        page = item.get("page")
+        page_label = f" · {page}쪽" if page else ""
+        st.markdown(f"- `{record_id}`")
+        st.caption(f"검색 문서: {file_name}{page_label}")
+        excerpt = item.get("excerpt")
+        if excerpt:
+            st.code(excerpt, language=None)
+        elif item.get("citation_matched"):
+            st.caption("검색 citation은 확인됐으나 발췌문은 제공되지 않았습니다.")
+        else:
+            st.warning("이 ID와 일치하는 실제 File Search citation이 없습니다.")
+
+
 def render_independent_report(report: dict[str, Any]) -> None:
     """Render findings from the current advertisement review."""
 
@@ -235,8 +261,45 @@ def render_independent_report(report: dict[str, Any]) -> None:
             for item in findings
         ]
         st.dataframe(rows, use_container_width=True, hide_index=True)
-        with st.expander("항목별 검색 근거와 판단 사유"):
-            st.json(findings, expanded=False)
+        st.markdown("### 항목별 검색 근거와 판단 사유")
+        for item in findings:
+            title = (
+                f"{item['violation_label']} · 위험도 "
+                f"{item['risk_score']}/10 · {item['status']}"
+            )
+            with st.expander(title, expanded=True):
+                st.markdown("**적발된 광고 원문 문구**")
+                if item["problem_expressions"]:
+                    for expression in item["problem_expressions"]:
+                        source_field = expression.get("source_field") or "-"
+                        expression_id = expression.get("expression_id") or "-"
+                        st.caption(f"{expression_id} · {source_field}")
+                        st.code(
+                            expression.get("quote") or "원문 문구 확인 불가",
+                            language=None,
+                        )
+                else:
+                    st.warning("연결된 광고 원문 문구가 없습니다.")
+
+                evidence = item["evidence_details"]
+                render_evidence_group("적용 Rule", evidence["rules"])
+                render_evidence_group(
+                    "공식 검색근거·인용문",
+                    evidence["official_evidence"],
+                )
+                render_evidence_group("참고 사례", evidence["cases"])
+
+                st.markdown("**판단 사유**")
+                st.info(item["score_reason"] or "판단 사유가 없습니다.")
+                if item["score_factors"]:
+                    st.markdown("**점수 적용요소**")
+                    for factor in item["score_factors"]:
+                        st.write(f"- {factor}")
+                if item["uncertainty_codes"]:
+                    st.warning(
+                        "확인 필요: "
+                        + ", ".join(item["uncertainty_codes"])
+                    )
     st.caption(report["independent_findings_scope"])
 
 

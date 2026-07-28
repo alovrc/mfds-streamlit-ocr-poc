@@ -21,6 +21,46 @@ VIOLATION_LABELS = {
 ACTIVE_STATUSES = {"HIGH", "REVIEW", "LOW"}
 
 
+def _citation_index(
+    citations: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Index the most informative citation for each retrieved record."""
+
+    index: dict[str, dict[str, Any]] = {}
+    for citation in citations:
+        record_id = str(citation.get("record_id") or "")
+        if not record_id:
+            continue
+        current = index.get(record_id)
+        if current is None or (
+            not current.get("excerpt") and citation.get("excerpt")
+        ):
+            index[record_id] = citation
+    return index
+
+
+def _evidence_details(
+    record_ids: list[str],
+    citations: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join model-selected evidence IDs to actual File Search metadata."""
+
+    details: list[dict[str, Any]] = []
+    for record_id in record_ids:
+        citation = citations.get(record_id, {})
+        details.append(
+            {
+                "record_id": record_id,
+                "file_name": citation.get("file_name"),
+                "source": citation.get("source"),
+                "page": citation.get("page"),
+                "excerpt": citation.get("excerpt"),
+                "citation_matched": bool(citation),
+            }
+        )
+    return details
+
+
 def _all_reviews(output: dict[str, Any]) -> list[dict[str, Any]]:
     reviews: list[dict[str, Any]] = []
     stage1_products = {
@@ -29,6 +69,13 @@ def _all_reviews(output: dict[str, Any]) -> list[dict[str, Any]]:
     }
     for product in output.get("product_results", []):
         stage1_product = stage1_products.get(product.get("product_index"), {})
+        expressions = {
+            item.get("expression_id"): item
+            for item in product.get("problem_expressions", [])
+        }
+        citations = _citation_index(
+            product.get("file_search", {}).get("citations", [])
+        )
         for review in product.get("violation_reviews", []):
             reviews.append(
                 {
@@ -38,6 +85,8 @@ def _all_reviews(output: dict[str, Any]) -> list[dict[str, Any]]:
                         "food_confidence"
                     ),
                     "hff_confidence": stage1_product.get("hff_confidence"),
+                    "_expressions": expressions,
+                    "_citations": citations,
                     **review,
                 }
             )
@@ -45,6 +94,12 @@ def _all_reviews(output: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _candidate(review: dict[str, Any]) -> dict[str, Any]:
+    expressions = review.get("_expressions", {})
+    citations = review.get("_citations", {})
+    expression_ids = list(review.get("expression_ids", []))
+    rule_ids = list(review.get("rule_ids", []))
+    official_evidence_ids = list(review.get("official_evidence_ids", []))
+    case_ids = list(review.get("case_ids", []))
     return {
         "product_index": review.get("product_index"),
         "product_name": review.get("product_name"),
@@ -57,12 +112,29 @@ def _candidate(review: dict[str, Any]) -> dict[str, Any]:
         ),
         "status": review.get("status"),
         "risk_score": review.get("risk_score"),
-        "expression_ids": list(review.get("expression_ids", [])),
-        "rule_ids": list(review.get("rule_ids", [])),
-        "official_evidence_ids": list(
-            review.get("official_evidence_ids", [])
-        ),
-        "case_ids": list(review.get("case_ids", [])),
+        "expression_ids": expression_ids,
+        "problem_expressions": [
+            {
+                "expression_id": expression_id,
+                "quote": expressions.get(expression_id, {}).get("quote"),
+                "source_field": expressions.get(expression_id, {}).get(
+                    "source_field"
+                ),
+            }
+            for expression_id in expression_ids
+        ],
+        "rule_ids": rule_ids,
+        "official_evidence_ids": official_evidence_ids,
+        "case_ids": case_ids,
+        "evidence_details": {
+            "rules": _evidence_details(rule_ids, citations),
+            "official_evidence": _evidence_details(
+                official_evidence_ids,
+                citations,
+            ),
+            "cases": _evidence_details(case_ids, citations),
+        },
+        "score_factors": list(review.get("score_factors", [])),
         "score_reason": review.get("score_reason", ""),
         "uncertainty_codes": list(review.get("uncertainty_codes", [])),
     }

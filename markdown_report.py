@@ -44,6 +44,46 @@ def _expression_map(product: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
+def _citation_map(product: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    citations: dict[str, dict[str, Any]] = {}
+    for item in product.get("file_search", {}).get("citations", []):
+        record_id = str(item.get("record_id") or "")
+        if record_id and (
+            record_id not in citations
+            or (
+                not citations[record_id].get("excerpt")
+                and item.get("excerpt")
+            )
+        ):
+            citations[record_id] = item
+    return citations
+
+
+def _append_evidence_details(
+    lines: list[str],
+    label: str,
+    record_ids: list[str],
+    citations: dict[str, dict[str, Any]],
+) -> None:
+    lines.extend(["", f"#### {label}", ""])
+    if not record_ids:
+        lines.append("- 연결된 근거 없음")
+        return
+    for record_id in record_ids:
+        citation = citations.get(str(record_id), {})
+        file_name = _text(citation.get("file_name"), "파일명 확인 불가")
+        page = citation.get("page")
+        page_label = f", {page}쪽" if page else ""
+        lines.append(f"- `{record_id}` — {file_name}{page_label}")
+        excerpt = str(citation.get("excerpt") or "").strip()
+        if excerpt:
+            lines.append(f"  > {' '.join(excerpt.split())}")
+        elif citation:
+            lines.append("  > 검색 citation은 확인됐으나 발췌문은 제공되지 않음")
+        else:
+            lines.append("  > 실제 File Search citation과 일치 여부 확인 필요")
+
+
 def _search_runs(output: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
     runs: list[tuple[str, dict[str, Any]]] = []
     stage1_search = output.get("stage1", {}).get("file_search")
@@ -322,6 +362,7 @@ def build_markdown_report(
             str(review.get("violation_type")),
         )
         expressions = _expression_map(product)
+        citations = _citation_map(product)
         lines.extend(
             [
                 "",
@@ -347,6 +388,24 @@ def build_markdown_report(
             lines.append(
                 f"  - `{expression_id}` ({source_field}): “{quote}”"
             )
+        _append_evidence_details(
+            lines,
+            "적용 Rule",
+            list(review.get("rule_ids", [])),
+            citations,
+        )
+        _append_evidence_details(
+            lines,
+            "공식 검색근거·인용문",
+            list(review.get("official_evidence_ids", [])),
+            citations,
+        )
+        _append_evidence_details(
+            lines,
+            "참고 사례",
+            list(review.get("case_ids", [])),
+            citations,
+        )
 
     lines.extend(["", "## 5. File Search 실행 및 검색 근거", ""])
     runs = _search_runs(output)

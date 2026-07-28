@@ -36,7 +36,33 @@ def output_with(*reviews: dict) -> dict:
             {
                 "product_index": 0,
                 "product_name": "테스트 제품",
+                "problem_expressions": [
+                    {
+                        "expression_id": "EXP-1",
+                        "quote": "질병이 치료됩니다",
+                        "source_field": "body_text",
+                        "product_linked": True,
+                    }
+                ],
                 "violation_reviews": list(reviews),
+                "file_search": {
+                    "citations": [
+                        {
+                            "record_id": "RULE-1",
+                            "file_name": "rules.md",
+                            "source": "file-rule",
+                            "page": None,
+                            "excerpt": "질병 치료 표현 적용 기준",
+                        },
+                        {
+                            "record_id": "LAW-1",
+                            "file_name": "official.md",
+                            "source": "file-law",
+                            "page": 3,
+                            "excerpt": "공식 근거 인용문",
+                        },
+                    ]
+                },
             }
         ],
         "record_overall_status": "HIGH",
@@ -61,6 +87,16 @@ def test_returns_only_detected_independent_findings() -> None:
     ] == ["DISEASE_PREVENTION_TREATMENT", "HFF_CONFUSION"]
     assert report["independent_findings"][0]["food_confidence"] == 0.82
     assert report["independent_findings"][0]["hff_confidence"] == 0.18
+    finding = report["independent_findings"][0]
+    assert finding["problem_expressions"][0]["quote"] == "질병이 치료됩니다"
+    assert (
+        finding["evidence_details"]["rules"][0]["file_name"]
+        == "rules.md"
+    )
+    assert (
+        finding["evidence_details"]["official_evidence"][0]["excerpt"]
+        == "공식 근거 인용문"
+    )
 
 
 def test_report_contains_only_independent_review_fields() -> None:

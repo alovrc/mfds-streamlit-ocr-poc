@@ -38,6 +38,7 @@ def sample_output() -> dict:
                         "file_name": "product.md",
                         "source": "file-1",
                         "page": None,
+                        "excerpt": "식품 분류 검색 발췌문",
                     }
                 ],
                 "latency_ms": 1200,
@@ -80,6 +81,7 @@ def sample_output() -> dict:
                             "file_name": "law.md",
                             "source": "file-2",
                             "page": 3,
+                            "excerpt": "질병 치료 광고 공식 근거",
                         }
                     ],
                     "latency_ms": 2300,
@@ -118,6 +120,8 @@ def test_markdown_report_contains_decision_and_traceability() -> None:
     assert "FS01_PRODUCT_GATE" in report
     assert "FS11_FOOD_REVIEW" in report
     assert "file-2" in report
+    assert "질병 치료 광고 공식 근거" in report
+    assert "공식 검색근거·인용문" in report
     assert "최종 판단 전 담당자" in report
     assert "결정론적 위험도·대표유형 집계" in report
     assert "2026-07-28-poc-1" in report

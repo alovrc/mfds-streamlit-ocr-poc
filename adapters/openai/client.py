@@ -123,6 +123,34 @@ def _walk(value: Any):
             yield from _walk(item)
 
 
+def _search_excerpt(
+    text: str,
+    record_id: str,
+    *,
+    max_chars: int = 1200,
+) -> str | None:
+    """Return a bounded search-result excerpt centred on the record ID."""
+
+    normalized = " ".join(text.split())
+    if not normalized:
+        return None
+    if len(normalized) <= max_chars:
+        return normalized
+    position = normalized.find(record_id)
+    if position < 0:
+        return normalized[:max_chars].rstrip() + "…"
+    start = max(0, position - max_chars // 3)
+    end = min(len(normalized), start + max_chars)
+    start = max(0, end - max_chars)
+    excerpt = normalized[start:end].strip()
+    rendered = (
+        ("…" if start else "")
+        + excerpt
+        + ("…" if end < len(normalized) else "")
+    )
+    return rendered[:max_chars]
+
+
 def _retrieval_metadata(response: Any) -> tuple[bool, list[str], list[SearchCitation]]:
     payload = _as_dict(response)
     file_search_run = False
@@ -155,6 +183,7 @@ def _retrieval_metadata(response: Any) -> tuple[bool, list[str], list[SearchCita
                                 file_name=file_name,
                                 source=file_id or None,
                                 page=None,
+                                excerpt=_search_excerpt(text, record_id),
                             )
                         )
         if item_type == "file_citation":
@@ -170,6 +199,7 @@ def _retrieval_metadata(response: Any) -> tuple[bool, list[str], list[SearchCita
                     file_name=item.get("filename") or item.get("file_name"),
                     source=item.get("file_id") or item.get("source"),
                     page=item.get("page_number"),
+                    excerpt=None,
                 )
             )
         for key in ("text", "content"):
@@ -178,12 +208,17 @@ def _retrieval_metadata(response: Any) -> tuple[bool, list[str], list[SearchCita
                 retrieved.extend(RECORD_ID_PATTERN.findall(text))
 
     unique_citations: list[SearchCitation] = []
-    seen_citations: set[tuple[str, str | None]] = set()
+    citation_positions: dict[tuple[str, str | None], int] = {}
     for citation in citations:
         key = (citation.record_id, citation.file_name)
-        if key not in seen_citations:
+        if key not in citation_positions:
+            citation_positions[key] = len(unique_citations)
             unique_citations.append(citation)
-            seen_citations.add(key)
+        elif (
+            not unique_citations[citation_positions[key]].excerpt
+            and citation.excerpt
+        ):
+            unique_citations[citation_positions[key]] = citation
     return file_search_run, list(dict.fromkeys(retrieved)), unique_citations
 
 

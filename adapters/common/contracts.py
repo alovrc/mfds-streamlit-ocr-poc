@@ -25,6 +25,7 @@ class SearchCitation:
     file_name: str | None = None
     source: str | None = None
     page: int | None = None
+    excerpt: str | None = None
 
 
 @dataclass
@@ -51,6 +52,7 @@ class ProviderResult:
                     "file_name": item.file_name,
                     "source": item.source,
                     "page": item.page,
+                    "excerpt": item.excerpt,
                 }
                 for item in self.citations
             ],
