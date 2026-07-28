@@ -633,6 +633,7 @@ def main() -> None:
     )
     require_password()
     configure_from_secrets()
+    openai_configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
     st.title("MFDS 2단계 Cloud File Search OCR 시험")
     st.caption(
         "1단계 제품·경로 판정 → 제품별 2단계 검색 → 담당자 확인"
@@ -641,7 +642,10 @@ def main() -> None:
         "법적 최종 판단 도구가 아닙니다. 원문·검색 근거·사실성을 담당자가 확인해야 합니다."
     )
     st.sidebar.subheader("운영 상태")
-    st.sidebar.success("OpenAI File Search 활성")
+    if openai_configured:
+        st.sidebar.success("OpenAI File Search 활성")
+    else:
+        st.sidebar.warning("OpenAI File Search 미설정")
     st.sidebar.info("Gemini 일시 중단")
     if st.sidebar.button("로그아웃", use_container_width=True):
         st.session_state.authenticated = False
@@ -658,7 +662,13 @@ def main() -> None:
     offline_col, openai_col, gemini_col, clear_col = st.columns(4)
     if offline_col.button("오프라인 계약 실행", use_container_width=True):
         run_provider("offline", source)
-    if openai_col.button("OpenAI 실행", type="primary", use_container_width=True):
+    if openai_col.button(
+        "OpenAI 실행",
+        type="primary",
+        disabled=not openai_configured,
+        help=None if openai_configured else "올바른 OpenAI 프로젝트 키를 Secrets에 설정해야 합니다.",
+        use_container_width=True,
+    ):
         run_provider("openai", source)
     gemini_col.button(
         "Gemini 중단됨",
