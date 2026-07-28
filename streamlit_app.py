@@ -216,7 +216,7 @@ def render_evidence_group(
     label: str,
     evidence: list[dict[str, Any]],
 ) -> None:
-    """Render evidence IDs together with their File Search provenance."""
+    """Render evidence IDs with File Search or local-catalog provenance."""
 
     st.markdown(f"**{label}**")
     if not evidence:
@@ -228,7 +228,10 @@ def render_evidence_group(
         page = item.get("page")
         page_label = f" · {page}쪽" if page else ""
         st.markdown(f"- `{record_id}`")
-        st.caption(f"검색 문서: {file_name}{page_label}")
+        if file_name == "rule_catalog.json":
+            st.caption(f"결정론적 로컬 Rule 기준표: {file_name}")
+        else:
+            st.caption(f"검색 문서: {file_name}{page_label}")
         excerpt = item.get("excerpt")
         if excerpt:
             st.code(excerpt, language=None)
@@ -261,7 +264,7 @@ def render_independent_report(report: dict[str, Any]) -> None:
             for item in findings
         ]
         st.dataframe(rows, use_container_width=True, hide_index=True)
-        st.markdown("### 항목별 검색 근거와 판단 사유")
+        st.markdown("### 항목별 Rule·검색 근거와 판단 사유")
         for item in findings:
             title = (
                 f"{item['violation_label']} · 위험도 "
@@ -282,7 +285,10 @@ def render_independent_report(report: dict[str, Any]) -> None:
                     st.warning("연결된 광고 원문 문구가 없습니다.")
 
                 evidence = item["evidence_details"]
-                render_evidence_group("적용 Rule", evidence["rules"])
+                render_evidence_group(
+                    "적용 Rule(로컬 결정론적 연결)",
+                    evidence["rules"],
+                )
                 render_evidence_group(
                     "공식 검색근거·인용문",
                     evidence["official_evidence"],

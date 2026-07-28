@@ -1,0 +1,142 @@
+{
+  "catalog_version": "2026-07-28-poc-1",
+  "source_data_version": "2026-07-27-two-stage-v0.9-validated-active",
+  "selection_policy": "PRIMARY_ACTIVE_RULE_PER_VIOLATION_FAMILY",
+  "record_id_template": "RULE::{product_route}::{unified_rule_id}",
+  "source_files": [
+    {
+      "name": "fs11_food_review_records.jsonl",
+      "sha256": "900cddef02a6c9aee82c0f887c5c61c6cdd9582e3036b0ea401578283a92cade"
+    },
+    {
+      "name": "fs21_hff_review_records.jsonl",
+      "sha256": "74424187787269f8c24b8469c9b7a6c00da4e45240eb41860d13d843c1b19f2a"
+    }
+  ],
+  "violation_type_aliases": {
+    "DISEASE_PREVENTION_TREATMENT": [
+      "DISEASE_PREVENTION_TREATMENT"
+    ],
+    "MEDICINE_CONFUSION": [
+      "MEDICINE_CONFUSION"
+    ],
+    "HFF_CONFUSION": [
+      "HFF_CONFUSION"
+    ],
+    "UNAPPROVED_FUNCTION": [
+      "FALSE_EXAGGERATED"
+    ],
+    "FALSE_EXAGGERATED": [
+      "FALSE_EXAGGERATED"
+    ],
+    "CONSUMER_DECEPTION": [
+      "CONSUMER_DECEPTION"
+    ],
+    "INGREDIENT_TO_PRODUCT_EFFECT": [
+      "CONSUMER_DECEPTION"
+    ],
+    "TESTIMONIAL_EFFECT": [
+      "CONSUMER_DECEPTION"
+    ],
+    "EXPERT_ENDORSEMENT": [
+      "CONSUMER_DECEPTION"
+    ],
+    "COMPARISON_DEFAMATION": [
+      "DISPARAGEMENT",
+      "UNFAIR_COMPARISON"
+    ]
+  },
+  "rules": [
+    {
+      "unified_rule_id": "MFDS-05-DEC-001",
+      "violation_type": "DISEASE_PREVENTION_TREATMENT",
+      "status": "ACTIVE",
+      "route_scope": "BOTH",
+      "effective_from": "2025-09-19",
+      "source_document": "식품표시광고법 시행령 대통령령 제35734호",
+      "article": "시행령 별표 1 제1호",
+      "source_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273545&efYd=20250919",
+      "condition_text": "질병·질병군의 예방·치료, 특징적 징후·증상 또는 질병정보와 제품의 연관성을 표현",
+      "decision_text": "시행령이 정한 건강기능식품·특수의료용도식품 등의 예외 외에는 부당 표시·광고",
+      "source_row_id": "5"
+    },
+    {
+      "unified_rule_id": "MFDS-05-DEC-002",
+      "violation_type": "MEDICINE_CONFUSION",
+      "status": "ACTIVE",
+      "route_scope": "BOTH",
+      "effective_from": "2025-09-19",
+      "source_document": "식품표시광고법 시행령 대통령령 제35734호",
+      "article": "시행령 별표 1 제2호",
+      "source_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273545&efYd=20250919",
+      "condition_text": "의약품 전용 명칭, 의약품 포함·대체 또는 의약품 효능·치료효과 증대 표현",
+      "decision_text": "식품등을 의약품으로 인식할 우려가 있는 표시·광고",
+      "source_row_id": "6"
+    },
+    {
+      "unified_rule_id": "MFDS-05-DEC-003",
+      "violation_type": "HFF_CONFUSION",
+      "status": "ACTIVE",
+      "route_scope": "BOTH",
+      "effective_from": "2025-09-19",
+      "source_document": "식품표시광고법 시행령 대통령령 제35734호",
+      "article": "시행령 별표 1 제3호",
+      "source_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273545&efYd=20250919",
+      "condition_text": "일반식품 등을 기능성이 있는 건강기능식품처럼 표현",
+      "decision_text": "시행령이 정한 영양성분·일반식품 기능성 표시 등의 예외 외에는 부당 표시·광고",
+      "source_row_id": "7"
+    },
+    {
+      "unified_rule_id": "MFDS-05-DEC-004",
+      "violation_type": "FALSE_EXAGGERATED",
+      "status": "ACTIVE",
+      "route_scope": "BOTH",
+      "effective_from": "2025-09-19",
+      "source_document": "식품표시광고법 시행령 대통령령 제35734호",
+      "article": "시행령 별표 1 제4호",
+      "source_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273545&efYd=20250919",
+      "condition_text": "허가·등록·신고·보고 사항과 다르거나 인정받지 않은 기능성, 사실과 다른 내용 등을 표현",
+      "decision_text": "거짓·과장된 표시·광고",
+      "source_row_id": "8"
+    },
+    {
+      "unified_rule_id": "MFDS-05-DEC-005",
+      "violation_type": "CONSUMER_DECEPTION",
+      "status": "ACTIVE",
+      "route_scope": "BOTH",
+      "effective_from": "2025-09-19",
+      "source_document": "식품표시광고법 시행령 대통령령 제35734호",
+      "article": "시행령 별표 1 제5호",
+      "source_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273545&efYd=20250919",
+      "condition_text": "공인되지 않은 연구, 원재료 효능의 제품 효능 오인, 체험기·추천·보증, 인정사항 변경 등을 사용",
+      "decision_text": "소비자를 기만하는 표시·광고",
+      "source_row_id": "9"
+    },
+    {
+      "unified_rule_id": "MFDS-05-DEC-006",
+      "violation_type": "DISPARAGEMENT",
+      "status": "ACTIVE",
+      "route_scope": "BOTH",
+      "effective_from": "2025-09-19",
+      "source_document": "식품표시광고법 시행령 대통령령 제35734호",
+      "article": "시행령 별표 1 제6호",
+      "source_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273545&efYd=20250919",
+      "condition_text": "비교 표현으로 다른 업체 제품을 간접 비방하거나 우수한 것으로 인식시킴",
+      "decision_text": "다른 업체나 제품을 비방하는 표시·광고",
+      "source_row_id": "10"
+    },
+    {
+      "unified_rule_id": "MFDS-05-DEC-007",
+      "violation_type": "UNFAIR_COMPARISON",
+      "status": "ACTIVE",
+      "route_scope": "BOTH",
+      "effective_from": "2025-09-19",
+      "source_document": "식품표시광고법 시행령 대통령령 제35734호",
+      "article": "시행령 별표 1 제7호",
+      "source_url": "https://www.law.go.kr/LSW/lsInfoP.do?lsiSeq=273545&efYd=20250919",
+      "condition_text": "비교대상·기준·방법이 불명확하거나 관련이 적은 내용·미사용 원료를 강조",
+      "decision_text": "객관적 근거 없는 부당 비교 표시·광고",
+      "source_row_id": "11"
+    }
+  ]
+}

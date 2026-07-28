@@ -80,23 +80,22 @@ python scripts/build_product_master.py `
   --output ".codex_tmp\mfds_health_functional_food_product_master_83687.sqlite3"
 ```
 
-## Rule 전용 검색
+## 결정론적 로컬 Rule 카탈로그
 
-위반유형 후보가 탐지되면 혼합 검색 결과에 의존하지 않고 후보별 Rule
-검색을 별도로 실행한다. File Search 파일의 `record_class=RULE`,
-`violation_type`, `active=true` attributes를 API 필터로 강제하며, 1차
-검색이 비어 있으면 동의어를 포함한 보완 질의로 한 번 더 검색한다.
+Rule은 의미검색 대상이 아니라 버전 고정 기준표로 취급한다. 검증된 활성
+Rule 원천에서 제1호부터 제7호까지의 대표 법적 기준을 추출한
+`rule_catalog.json`을 앱 소스와 함께 배포한다. 모델이 반환한 `rule_ids`는
+신뢰하지 않고 제거하며, 후보 위반유형과 제품 경로에 따라 로컬 코드가
+`RULE::FOOD_REVIEW::*` 또는 `RULE::HFF_REVIEW::*` ID를 결정론적으로
+연결한다.
 
-활성 위반항목에는 실제 검색된 `RULE::` ID가 하나 이상 필요하다. Rule이
-확보되지 않으면 위험도와 대표유형 집계에서 제외하고
-`SEARCH_NO_RULE`, `INSUFFICIENT_EVIDENCE`로 담당자 검토에 전달한다.
-
-검증된 원천 JSONL에서 필터 가능한 Rule 파일을 생성·동기화하는 명령은
-다음과 같다. 생성 파일은 `.codex_tmp`에만 남고 공개 저장소에 커밋하지
+File Search는 공식 근거와 사례 검색에만 사용한다. 활성 후보에 대응하는
+로컬 Rule이 없을 때에만 `SEARCH_NO_RULE`과
+`INSUFFICIENT_EVIDENCE`로 담당자 검토에 전달한다. 따라서 정상적인 제품
+한 건은 1단계 제품유형 검색 1회와 2단계 위반 검토 검색 1회, 총 2회의
+Responses API 호출로 처리되며 별도 Vector Store Rule 검색은 발생하지
 않는다.
 
-```powershell
-python scripts/sync_rule_corpus.py `
-  --source-root "C:\path\filesearch_upload" `
-  --apply
-```
+카탈로그에는 원천 데이터 버전과 원천 JSONL SHA-256을 함께 기록한다.
+구체적인 고시 조건에만 적용되는 보조 Rule은 유형만 같다는 이유로 자동
+연결하지 않고, 각 위반유형의 기본 법적 기준만 사용한다.

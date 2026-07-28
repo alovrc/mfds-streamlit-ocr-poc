@@ -421,7 +421,7 @@ def build_markdown_report(
             )
         _append_evidence_details(
             lines,
-            "적용 Rule",
+            "적용 Rule(로컬 결정론적 연결)",
             list(review.get("rule_ids", [])),
             citations,
         )
@@ -438,7 +438,7 @@ def build_markdown_report(
             citations,
         )
 
-    lines.extend(["", "## 5. File Search 실행 및 검색 근거", ""])
+    lines.extend(["", "## 5. File Search 및 로컬 Rule 근거", ""])
     runs = _search_runs(output)
     lines.extend(
         _table(
@@ -485,19 +485,21 @@ def build_markdown_report(
                     citation.get("page"),
                 )
             )
-    lines.extend(["", "### 검색 citation 목록", ""])
+    lines.extend(["", "### 근거 citation 목록", ""])
     lines.extend(
         _table(
-            ("단계", "저장소", "검색 ID", "파일명", "파일 ID", "페이지"),
+            ("단계", "저장소", "근거 ID", "파일명", "출처", "페이지"),
             citation_rows,
         )
     )
     lines.extend(
         [
             "",
-            "검색 ID와 citation은 모델이 실제로 검색한 자료의 추적정보입니다. "
-            "검색됐다는 사실만으로 개별 위반 후보의 법적 근거가 자동 확정되지는 "
-            "않으며, 위반 후보별 Rule·공식근거 연결을 담당자가 확인해야 합니다.",
+            "`rule_catalog.json`의 Rule ID는 후보 위반유형에 따라 앱이 "
+            "결정론적으로 연결한 기준이며 별도 File Search 결과가 아닙니다. "
+            "그 밖의 citation은 모델이 실제로 검색한 자료의 추적정보입니다. "
+            "Rule 연결이나 검색 사실만으로 법적 판단이 자동 확정되지는 않으며, "
+            "담당자가 원문과 공식근거의 직접 적용 여부를 확인해야 합니다.",
             "",
             "## 6. 담당자 확인사항",
             "",
@@ -508,7 +510,7 @@ def build_markdown_report(
         "광고 원문의 문제 표현이 현재 게시물에 실제 존재하는지 확인",
         "제품유형·제품 DB 일치 여부와 표시사항 확인",
         "위반 후보별 Rule 및 공식근거가 해당 표현에 직접 적용되는지 확인",
-        "검색 citation의 원문, 버전 및 시행일 확인",
+        "File Search citation과 로컬 Rule의 원문, 버전 및 시행일 확인",
     ]
     if uncertainty_codes:
         review_items.append(
