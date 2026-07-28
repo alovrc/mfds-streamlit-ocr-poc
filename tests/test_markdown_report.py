@@ -141,3 +141,23 @@ def test_markdown_report_deduplicates_citations_per_store() -> None:
     )
 
     assert report.count("| file-2 |") == 1
+
+
+def test_markdown_report_hides_optional_official_evidence_miss() -> None:
+    output = sample_output()
+    review = output["product_results"][0]["violation_reviews"][0]
+    review["official_evidence_ids"] = []
+    review["uncertainty_codes"] = ["SEARCH_NO_OFFICIAL_EVIDENCE"]
+    output["product_results"][0]["uncertainty_codes"] = [
+        "SEARCH_NO_OFFICIAL_EVIDENCE"
+    ]
+    output["error_codes"] = ["SEARCH_NO_OFFICIAL_EVIDENCE"]
+
+    report = build_markdown_report(
+        output,
+        "openai",
+        generated_at="2026-07-27T12:00:00+09:00",
+    )
+
+    assert "SEARCH_NO_OFFICIAL_EVIDENCE" not in report
+    assert "보조 공식근거 미검색" not in report

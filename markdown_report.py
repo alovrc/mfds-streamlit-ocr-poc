@@ -7,15 +7,14 @@ from typing import Any
 
 from result_partition import ACTIVE_STATUSES, VIOLATION_LABELS
 
-UNCERTAINTY_LABELS = {
-    "SEARCH_NO_OFFICIAL_EVIDENCE": "보조 공식근거 미검색",
-}
+HIDDEN_UNCERTAINTY_CODES = {"SEARCH_NO_OFFICIAL_EVIDENCE"}
 
 
 def _uncertainty_text(codes: list[str]) -> str:
     return ", ".join(
-        UNCERTAINTY_LABELS.get(str(code), str(code))
+        str(code)
         for code in codes
+        if str(code) not in HIDDEN_UNCERTAINTY_CODES
     )
 
 
@@ -438,11 +437,6 @@ def build_markdown_report(
                 "- 문제 표현:",
             ]
         )
-        if not review.get("official_evidence_ids"):
-            lines.append(
-                "- 공식근거 ID 미검색 시 근거 설명: 적용 Rule ID와 로컬 "
-                "Rule 기준 설명을 판단근거로 사용함"
-            )
         expression_ids = review.get("expression_ids", [])
         if not expression_ids:
             lines.append("  - 확인된 직접 인용 없음")
@@ -459,12 +453,13 @@ def build_markdown_report(
             list(review.get("rule_ids", [])),
             citations,
         )
-        _append_evidence_details(
-            lines,
-            "공식 검색근거·인용문",
-            list(review.get("official_evidence_ids", [])),
-            citations,
-        )
+        if review.get("official_evidence_ids"):
+            _append_evidence_details(
+                lines,
+                "공식 검색근거·인용문",
+                list(review.get("official_evidence_ids", [])),
+                citations,
+            )
         _append_evidence_details(
             lines,
             "참고 사례",

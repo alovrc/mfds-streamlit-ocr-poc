@@ -24,17 +24,16 @@ from result_partition import independent_review_output
 from web_capture import CaptureError
 
 STORE_ALIASES = ("FS01_PRODUCT_GATE", "FS11_FOOD_REVIEW", "FS21_HFF_REVIEW")
-UNCERTAINTY_LABELS = {
-    "SEARCH_NO_OFFICIAL_EVIDENCE": "보조 공식근거 미검색",
-}
+HIDDEN_UNCERTAINTY_CODES = {"SEARCH_NO_OFFICIAL_EVIDENCE"}
 
 
 def display_uncertainty_codes(codes: list[str]) -> str:
     """Return user-facing labels while preserving raw codes in JSON outputs."""
 
     return ", ".join(
-        UNCERTAINTY_LABELS.get(str(code), str(code))
+        str(code)
         for code in codes
+        if str(code) not in HIDDEN_UNCERTAINTY_CODES
     )
 
 
@@ -469,10 +468,11 @@ def render_independent_report(report: dict[str, Any]) -> None:
                     "적용 Rule(로컬 결정론적 연결)",
                     evidence["rules"],
                 )
-                render_evidence_group(
-                    "공식 검색근거·인용문",
-                    evidence["official_evidence"],
-                )
+                if evidence["official_evidence"]:
+                    render_evidence_group(
+                        "공식 검색근거·인용문",
+                        evidence["official_evidence"],
+                    )
                 render_evidence_group("참고 사례", evidence["cases"])
 
                 st.markdown("**판단 사유**")
