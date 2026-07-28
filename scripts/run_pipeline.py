@@ -16,6 +16,7 @@ sys.path.insert(0, str(PACKAGE_ROOT))
 
 from adapters.common import offline
 from product_master import ProductMasterLookup, lookup_product
+from rule_catalog import attach_local_rules
 from risk_aggregation import (
     apply_deterministic_review_scores,
     build_deterministic_aggregation,
@@ -382,10 +383,51 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
         )
     quarantine_invalid_problem_expressions(payload, result.data)
     apply_food_hff_confusion_guardrail(payload, result.data)
+    if provider == "openai":
+        attach_rules_to_tracking(
+            result.data,
+            payload["file_search_store_alias"],
+        )
     apply_deterministic_review_scores(result.data)
     normalize_stage2_statuses(result.data)
     validate_stage2(payload, result.data)
     return result.data
+
+
+def attach_rules_to_tracking(
+    output: dict[str, Any],
+    store_alias: str,
+) -> None:
+    """Attach local Rule IDs and expose their official citations in tracking."""
+
+    rule_ids, rule_citations = attach_local_rules(
+        data=output,
+        store_alias=store_alias,
+    )
+    tracking = output.get("file_search")
+    if not isinstance(tracking, dict):
+        return
+    tracking["retrieved_ids"] = list(
+        dict.fromkeys([*tracking.get("retrieved_ids", []), *rule_ids])
+    )
+    citation_rows = list(tracking.get("citations", []))
+    citation_rows.extend(
+        {
+            "record_id": item.record_id,
+            "file_name": item.file_name,
+            "source": item.source,
+            "page": item.page,
+            "excerpt": item.excerpt,
+        }
+        for item in rule_citations
+    )
+    tracking["citations"] = list(
+        {
+            (item.get("record_id"), item.get("file_name")): item
+            for item in citation_rows
+            if isinstance(item, dict)
+        }.values()
+    )
 
 
 def quarantine_invalid_problem_expressions(
