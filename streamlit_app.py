@@ -402,6 +402,7 @@ def render_independent_report(report: dict[str, Any]) -> None:
 
     st.subheader("광고 원문 독립검토 결과")
     findings = report["independent_findings"]
+    unresolved_findings = report.get("unresolved_findings", [])
     if not findings:
         st.info("현재 광고 원문에서 탐지된 위반 가능 항목이 없습니다.")
     else:
@@ -462,6 +463,35 @@ def render_independent_report(report: dict[str, Any]) -> None:
                         "확인 필요: "
                         + ", ".join(item["uncertainty_codes"])
                     )
+    if unresolved_findings:
+        with st.expander(
+            f"공식근거 미확보 후보 {len(unresolved_findings)}개",
+            expanded=False,
+        ):
+            st.caption(
+                "아래 후보는 공식근거 ID가 없어 위험도·대표유형 집계에서 "
+                "제외됐습니다."
+            )
+            st.dataframe(
+                [
+                    {
+                        "제품명": item["product_name"] or "-",
+                        "위반 후보": item["violation_label"],
+                        "상태": item["status"],
+                        "Rule ID 수": len(item["rule_ids"]),
+                        "공식근거 ID 수": len(
+                            item["official_evidence_ids"]
+                        ),
+                        "확인 필요": ", ".join(
+                            item["uncertainty_codes"]
+                        )
+                        or "-",
+                    }
+                    for item in unresolved_findings
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
     st.caption(report["independent_findings_scope"])
 
 
@@ -491,11 +521,14 @@ def render_results() -> None:
             third.metric(
                 "담당자 검토", "필요" if output["requires_human_review"] else "불필요"
             )
-            active_high = [
+            supported_reviews = [
                 review
                 for product in output.get("product_results", [])
                 for review in product.get("violation_reviews", [])
-                if review.get("status") == "HIGH"
+                if (
+                    review.get("status") in {"HIGH", "REVIEW", "LOW"}
+                    and review.get("official_evidence_ids")
+                )
             ]
             unresolved = [
                 review
@@ -505,15 +538,14 @@ def render_results() -> None:
             ]
             if (
                 output.get("record_overall_status")
-                == "INSUFFICIENT_EVIDENCE"
-                and active_high
-                and unresolved
+                == "SUFFICIENT_EVIDENCE"
+                and supported_reviews
             ):
                 st.info(
-                    "유효 최고위험 항목은 근거가 확보되어 HIGH로 평가됐습니다. "
-                    "전체 검토상태 INSUFFICIENT_EVIDENCE는 별도의 미해결 "
-                    "후보가 있음을 뜻하며, HIGH 항목의 근거 부족을 의미하지 "
-                    "않습니다."
+                    "Rule·원문 문제표현·공식근거 ID가 연결된 유효 위반 "
+                    "후보가 있어 전체 검토상태를 SUFFICIENT_EVIDENCE로 "
+                    "평가했습니다. 공식근거 미확보 후보는 별도로 표시하며 "
+                    "위험도·대표유형 집계에서 제외합니다."
                 )
             deterministic = output.get("deterministic_aggregation", {})
             if deterministic:

@@ -709,6 +709,7 @@
         "REVIEW",
         "LOW",
         "NOT_DETECTED",
+        "SUFFICIENT_EVIDENCE",
         "INSUFFICIENT_EVIDENCE"
       ]
     },

@@ -155,9 +155,23 @@ def independent_review_output(output: dict[str, Any]) -> dict[str, Any]:
             item["violation_type"],
         )
     )
+    unresolved_findings = [
+        _candidate(review)
+        for review in _all_reviews(output)
+        if review.get("status") == "INSUFFICIENT_EVIDENCE"
+    ]
+    unresolved_findings.sort(
+        key=lambda item: (
+            item["product_index"]
+            if item["product_index"] is not None
+            else -1,
+            item["violation_type"],
+        )
+    )
     return {
         "record_id": output.get("record_id"),
         "independent_findings": findings,
+        "unresolved_findings": unresolved_findings,
         "independent_findings_scope": (
             "현재 광고 원문을 제품정보·Rule·공식근거와 대조해 탐지한 위반 가능 "
             "항목입니다. 최종 판단 전 담당자가 원문과 검색 근거를 확인해야 "

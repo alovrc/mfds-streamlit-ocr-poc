@@ -20,6 +20,7 @@ from rule_catalog import attach_local_rules
 from risk_aggregation import (
     apply_deterministic_review_scores,
     build_deterministic_aggregation,
+    derive_record_evidence_status,
 )
 from validators.core import (
     ContractValidationError,
@@ -634,17 +635,12 @@ def aggregate(
         product_results
     )
     risk = deterministic_aggregation["overall_risk_score"]
-    insufficient = any(
-        item["product_overall_status"] == "INSUFFICIENT_EVIDENCE"
-        for item in product_results
-    )
+    record_overall_status = derive_record_evidence_status(product_results)
     output = {
         "record_id": source["record_id"],
         "stage1": stage1_output,
         "product_results": product_results,
-        "record_overall_status": (
-            "INSUFFICIENT_EVIDENCE" if insufficient else STATUS_BY_SCORE[risk]
-        ),
+        "record_overall_status": record_overall_status,
         "record_overall_risk_score": risk,
         "deterministic_aggregation": deterministic_aggregation,
         "requires_human_review": (

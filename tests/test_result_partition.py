@@ -87,6 +87,9 @@ def test_returns_only_detected_independent_findings() -> None:
     ] == ["DISEASE_PREVENTION_TREATMENT", "HFF_CONFUSION"]
     assert report["independent_findings"][0]["food_confidence"] == 0.82
     assert report["independent_findings"][0]["hff_confidence"] == 0.18
+    assert [
+        item["violation_type"] for item in report["unresolved_findings"]
+    ] == ["CONSUMER_DECEPTION"]
     finding = report["independent_findings"][0]
     assert finding["problem_expressions"][0]["quote"] == "질병이 치료됩니다"
     assert (
@@ -107,6 +110,7 @@ def test_report_contains_only_independent_review_fields() -> None:
     assert set(report) == {
         "record_id",
         "independent_findings",
+        "unresolved_findings",
         "independent_findings_scope",
         "deterministic_aggregation",
         "raw_model_summary",

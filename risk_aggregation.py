@@ -75,8 +75,8 @@ def apply_deterministic_review_scores(
     """Replace provisional model scores with rule-table scores.
 
     Only a detected candidate with a linked, verbatim expression is scoreable.
-    Scores of 8 or more additionally require linked official evidence under the
-    existing PoC evidence contract. Unsupported candidates remain visible as
+    Every active candidate additionally requires linked official evidence under
+    the PoC evidence contract. Unsupported candidates remain visible as
     INSUFFICIENT_EVIDENCE with score 0 and require human review.
     """
 
@@ -114,10 +114,7 @@ def apply_deterministic_review_scores(
         unsupported = (
             not linked_ids
             or not review.get("rule_ids")
-            or (
-                fixed_score >= 8
-                and not review.get("official_evidence_ids")
-            )
+            or not review.get("official_evidence_ids")
         )
         factors = review.setdefault("score_factors", [])
         audit_factor = (
@@ -136,7 +133,7 @@ def apply_deterministic_review_scores(
                 "결정론적 위험도 집계에서 제외했습니다."
             )
             uncertainty = review.setdefault("uncertainty_codes", [])
-            if fixed_score >= 8 and not review.get("official_evidence_ids"):
+            if not review.get("official_evidence_ids"):
                 if "SEARCH_NO_OFFICIAL_EVIDENCE" not in uncertainty:
                     uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
                 product_uncertainty = output.setdefault(
@@ -358,6 +355,35 @@ def build_deterministic_aggregation(
             representatives[key] for key in sorted(representatives)
         ],
     }
+
+
+def derive_record_evidence_status(
+    product_results: list[dict[str, Any]],
+) -> str:
+    """Summarize evidence sufficiency independently from risk severity.
+
+    A record is sufficient when at least one active violation review is linked
+    to official evidence. Other unresolved candidates remain available for
+    human review but do not downgrade the record-level evidence status.
+    """
+
+    reviews = [
+        review
+        for product in product_results
+        for review in product.get("violation_reviews", [])
+    ]
+    if any(
+        review.get("status") in ACTIVE_STATUSES
+        and bool(review.get("official_evidence_ids"))
+        for review in reviews
+    ):
+        return "SUFFICIENT_EVIDENCE"
+    if any(
+        review.get("status") == "INSUFFICIENT_EVIDENCE"
+        for review in reviews
+    ):
+        return "INSUFFICIENT_EVIDENCE"
+    return "NOT_DETECTED"
 
 
 def risk_rules_for_report(
