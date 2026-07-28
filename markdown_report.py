@@ -160,8 +160,11 @@ def build_markdown_report(
         _table(
             ("항목", "결과"),
             [
-                ("전체 상태", output.get("record_overall_status")),
-                ("전체 위험도", f"{output.get('record_overall_risk_score', '-')}/10"),
+                ("전체 검토상태", output.get("record_overall_status")),
+                (
+                    "유효 최고위험 점수",
+                    f"{output.get('record_overall_risk_score', '-')}/10",
+                ),
                 (
                     "담당자 검토",
                     "필요" if output.get("requires_human_review") else "불필요",
@@ -173,6 +176,34 @@ def build_markdown_report(
             ],
         )
     )
+    active_high = [
+        review
+        for product in output.get("product_results", [])
+        for review in product.get("violation_reviews", [])
+        if review.get("status") == "HIGH"
+    ]
+    unresolved = [
+        review
+        for product in output.get("product_results", [])
+        for review in product.get("violation_reviews", [])
+        if review.get("status") == "INSUFFICIENT_EVIDENCE"
+    ]
+    if (
+        output.get("record_overall_status") == "INSUFFICIENT_EVIDENCE"
+        and active_high
+        and unresolved
+    ):
+        lines.extend(
+            [
+                "",
+                (
+                    "> 유효 최고위험 항목은 Rule 및 관련 근거가 확보되어 "
+                    "HIGH로 평가되었습니다. 전체 검토상태 "
+                    "`INSUFFICIENT_EVIDENCE`는 별도의 미해결 후보가 있음을 "
+                    "나타내며, HIGH 항목의 근거 부족을 의미하지 않습니다."
+                ),
+            ]
+        )
 
     deterministic = output.get("deterministic_aggregation", {})
     if deterministic:
@@ -208,7 +239,7 @@ def build_markdown_report(
                 (
                     "조항",
                     "대표유형",
-                    "발생횟수",
+                    "고유 문제표현 수",
                     "위험도",
                     "최고위험 근거수",
                     "연결 판단유형",
@@ -252,7 +283,7 @@ def build_markdown_report(
                 (
                     "조항",
                     "대표유형",
-                    "발생횟수",
+                    "고유 문제표현 수",
                     "위험도",
                     "선정기준",
                 ),

@@ -321,17 +321,44 @@ def render_results() -> None:
                 st.session_state.sources.get(provider, {}),
             )
             first, second, third = st.columns(3)
-            first.metric("게시물 위험도", output["record_overall_risk_score"])
-            second.metric("전체 상태", output["record_overall_status"])
+            first.metric(
+                "유효 최고위험 점수",
+                output["record_overall_risk_score"],
+            )
+            second.metric("전체 검토상태", output["record_overall_status"])
             third.metric(
                 "담당자 검토", "필요" if output["requires_human_review"] else "불필요"
             )
+            active_high = [
+                review
+                for product in output.get("product_results", [])
+                for review in product.get("violation_reviews", [])
+                if review.get("status") == "HIGH"
+            ]
+            unresolved = [
+                review
+                for product in output.get("product_results", [])
+                for review in product.get("violation_reviews", [])
+                if review.get("status") == "INSUFFICIENT_EVIDENCE"
+            ]
+            if (
+                output.get("record_overall_status")
+                == "INSUFFICIENT_EVIDENCE"
+                and active_high
+                and unresolved
+            ):
+                st.info(
+                    "유효 최고위험 항목은 근거가 확보되어 HIGH로 평가됐습니다. "
+                    "전체 검토상태 INSUFFICIENT_EVIDENCE는 별도의 미해결 "
+                    "후보가 있음을 뜻하며, HIGH 항목의 근거 부족을 의미하지 "
+                    "않습니다."
+                )
             deterministic = output.get("deterministic_aggregation", {})
             if deterministic:
                 st.subheader("결정론적 위험도·대표유형 집계")
                 total, rules_version = st.columns(2)
                 total.metric(
-                    "유효 발생근거 수",
+                    "동일 광고 내 고유 문제표현 수",
                     deterministic.get("total_occurrence_count", 0),
                 )
                 rules_version.metric(
@@ -346,7 +373,7 @@ def render_results() -> None:
                     {
                         "조항": f"제{item['article_item']}호",
                         "대표유형": item["article_name"],
-                        "발생횟수": item["occurrence_count"],
+                        "고유 문제표현 수": item["occurrence_count"],
                         "위험도": item["risk_score"],
                         "선정기준": ", ".join(
                             representative_labels.get(value, value)
@@ -371,7 +398,7 @@ def render_results() -> None:
                             {
                                 "조항": f"제{item['article_item']}호",
                                 "유형": item["article_name"],
-                                "발생횟수": item["occurrence_count"],
+                                "고유 문제표현 수": item["occurrence_count"],
                                 "위험도": item["risk_score"],
                                 "최고위험 근거수": item[
                                     "highest_risk_occurrence_count"
