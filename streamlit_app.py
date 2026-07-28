@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from PIL import Image, UnidentifiedImageError
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PACKAGE_ROOT))
@@ -196,6 +198,19 @@ def _reset_ocr_capture() -> None:
             st.session_state.pop(key, None)
 
 
+def _is_renderable_image(image_bytes: bytes | None) -> bool:
+    """Return whether Streamlit/Pillow can safely render downloaded bytes."""
+
+    if not image_bytes:
+        return False
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False
+    return True
+
+
 def _render_ocr_capture_editor(capture: dict[str, Any]) -> None:
     """Show OCR source text without exposing engine confidence scores."""
 
@@ -226,7 +241,7 @@ def _render_ocr_capture_editor(capture: dict[str, Any]) -> None:
         label = f"{record['source_id']} · {record['ocr_status']}"
         with st.expander(label, expanded=False):
             image_bytes = record.get("_image_bytes")
-            if image_bytes:
+            if _is_renderable_image(image_bytes):
                 st.image(image_bytes, caption=record["image_url"], width=480)
             else:
                 st.caption(record["image_url"])

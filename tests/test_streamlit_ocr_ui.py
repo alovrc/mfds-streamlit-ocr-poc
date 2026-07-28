@@ -1,8 +1,19 @@
 import base64
+import io
 
+from PIL import Image
 from streamlit.testing.v1 import AppTest
 
 from auth import password_digest
+from streamlit_app import _is_renderable_image
+
+
+def test_renderable_image_guard_rejects_non_image_bytes() -> None:
+    assert not _is_renderable_image(b"not-an-image")
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 2), "white").save(buffer, format="PNG")
+    assert _is_renderable_image(buffer.getvalue())
 
 
 def test_authenticated_trial_ui_exposes_ocr_capture_controls() -> None:
