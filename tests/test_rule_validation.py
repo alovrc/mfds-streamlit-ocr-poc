@@ -37,7 +37,7 @@ def test_active_finding_with_rule_passes() -> None:
     validate_risk(output)
 
 
-def test_review_finding_requires_official_evidence() -> None:
+def test_review_finding_without_official_evidence_passes() -> None:
     item = finding(rule_ids=["RULE-1"])
     item["status"] = "REVIEW"
     item["risk_score"] = 7
@@ -47,8 +47,4 @@ def test_review_finding_requires_official_evidence() -> None:
         "product_overall_risk_score": 7,
     }
 
-    with pytest.raises(
-        ContractValidationError,
-        match="ACTIVE_REVIEW_REQUIRES_OFFICIAL_EVIDENCE",
-    ):
-        validate_risk(output)
+    validate_risk(output)

@@ -75,9 +75,10 @@ def apply_deterministic_review_scores(
     """Replace provisional model scores with rule-table scores.
 
     Only a detected candidate with a linked, verbatim expression is scoreable.
-    Every active candidate additionally requires linked official evidence under
-    the PoC evidence contract. Unsupported candidates remain visible as
-    INSUFFICIENT_EVIDENCE with score 0 and require human review.
+    Scores of 8 or more additionally require linked official evidence under the
+    PoC evidence contract. Lower-risk candidates without official evidence stay
+    active but require human review. Unsupported candidates remain visible as
+    INSUFFICIENT_EVIDENCE with score 0.
     """
 
     rules = rules or load_risk_rules()
@@ -114,7 +115,10 @@ def apply_deterministic_review_scores(
         unsupported = (
             not linked_ids
             or not review.get("rule_ids")
-            or not review.get("official_evidence_ids")
+            or (
+                fixed_score >= 8
+                and not review.get("official_evidence_ids")
+            )
         )
         factors = review.setdefault("score_factors", [])
         audit_factor = (
@@ -133,7 +137,7 @@ def apply_deterministic_review_scores(
                 "결정론적 위험도 집계에서 제외했습니다."
             )
             uncertainty = review.setdefault("uncertainty_codes", [])
-            if not review.get("official_evidence_ids"):
+            if fixed_score >= 8 and not review.get("official_evidence_ids"):
                 if "SEARCH_NO_OFFICIAL_EVIDENCE" not in uncertainty:
                     uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
                 product_uncertainty = output.setdefault(
@@ -156,6 +160,19 @@ def apply_deterministic_review_scores(
                     product_uncertainty.append("SEARCH_NO_RULE")
             human_review = True
             continue
+
+        if not review.get("official_evidence_ids"):
+            uncertainty = review.setdefault("uncertainty_codes", [])
+            if "SEARCH_NO_OFFICIAL_EVIDENCE" not in uncertainty:
+                uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
+            product_uncertainty = output.setdefault(
+                "uncertainty_codes", []
+            )
+            if "SEARCH_NO_OFFICIAL_EVIDENCE" not in product_uncertainty:
+                product_uncertainty.append(
+                    "SEARCH_NO_OFFICIAL_EVIDENCE"
+                )
+            human_review = True
 
         review["risk_score"] = fixed_score
         review["status"] = STATUS_BY_SCORE[fixed_score]
@@ -362,9 +379,10 @@ def derive_record_evidence_status(
 ) -> str:
     """Summarize evidence sufficiency independently from risk severity.
 
-    A record is sufficient when at least one active violation review is linked
-    to official evidence. Other unresolved candidates remain available for
-    human review but do not downgrade the record-level evidence status.
+    A record is sufficient when at least one active violation review has passed
+    the score-dependent evidence gate. Other unresolved candidates remain
+    available for human review but do not downgrade the record-level evidence
+    status.
     """
 
     reviews = [
@@ -374,7 +392,6 @@ def derive_record_evidence_status(
     ]
     if any(
         review.get("status") in ACTIVE_STATUSES
-        and bool(review.get("official_evidence_ids"))
         for review in reviews
     ):
         return "SUFFICIENT_EVIDENCE"

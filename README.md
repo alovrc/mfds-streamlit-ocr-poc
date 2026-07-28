@@ -49,12 +49,12 @@ python -m streamlit run streamlit_app.py
 유효한 원문 `expression_id`만 발생근거로 집계한다. 조항별 위험도는
 최댓값이며 합산하거나 평균하지 않는다.
 
-위험점수와 관계없이 활성 후보는 원문 문제표현, 로컬 Rule ID 및 File
-Search에서 회수한 공식근거 ID가 모두 연결되어야 유효하다. 하나라도
-누락되면 해당 후보를 `INSUFFICIENT_EVIDENCE`로 유지하고 위험도·대표유형
-집계에서 제외한다. 공식근거가 연결된 유효 후보가 하나라도 있으면 레코드
-전체 검토상태는 `SUFFICIENT_EVIDENCE`이며, 다른 미해결 후보는 별도
-담당자 검토 대상으로 표시한다.
+활성 후보는 원문 문제표현과 로컬 Rule ID가 연결되어야 유효하다. 위험도
+8~10점 후보는 File Search에서 회수한 공식근거 ID도 필수이며, 공식근거가
+없으면 `INSUFFICIENT_EVIDENCE`로 유지하고 집계에서 제외한다. 1~7점
+후보는 공식근거 ID가 없어도 유효하게 유지하되 담당자 확인 대상으로
+표시한다. 점수별 증거요건을 통과한 유효 후보가 하나라도 있으면 레코드
+전체 검토상태는 `SUFFICIENT_EVIDENCE`이다.
 
 대표유형은 다음 두 기준을 각각 산출한다.
 
@@ -97,9 +97,9 @@ Rule 원천에서 제1호부터 제7호까지의 대표 법적 기준을 추출�
 연결한다.
 
 File Search는 공식 근거와 사례 검색에만 사용한다. 활성 후보에 대응하는
-로컬 Rule이 없으면 `SEARCH_NO_RULE`, 공식근거가 없으면
-`SEARCH_NO_OFFICIAL_EVIDENCE`와 `INSUFFICIENT_EVIDENCE`로 담당자 검토에
-전달한다. 따라서 정상적인 제품
+로컬 Rule이 없으면 `SEARCH_NO_RULE`로 처리한다. 공식근거가 없으면
+`SEARCH_NO_OFFICIAL_EVIDENCE`를 표시하되, 8~10점 후보만
+`INSUFFICIENT_EVIDENCE`로 격리한다. 따라서 정상적인 제품
 한 건은 1단계 제품유형 검색 1회와 2단계 위반 검토 검색 1회, 총 2회의
 Responses API 호출로 처리되며 별도 Vector Store Rule 검색은 발생하지
 않는다.

@@ -182,7 +182,7 @@ def test_missing_rule_is_unresolved_and_not_scored() -> None:
     assert output["requires_human_review"] is True
 
 
-def test_review_score_also_requires_official_evidence() -> None:
+def test_review_score_without_official_evidence_stays_active() -> None:
     output = {
         "problem_expressions": [expression("E1")],
         "violation_reviews": [
@@ -200,9 +200,10 @@ def test_review_score_also_requires_official_evidence() -> None:
     apply_deterministic_review_scores(output)
 
     finding = output["violation_reviews"][0]
-    assert finding["risk_score"] == 0
-    assert finding["status"] == "INSUFFICIENT_EVIDENCE"
+    assert finding["risk_score"] == 7
+    assert finding["status"] == "REVIEW"
     assert "SEARCH_NO_OFFICIAL_EVIDENCE" in finding["uncertainty_codes"]
+    assert output["requires_human_review"] is True
 
 
 def test_supported_candidate_makes_record_evidence_sufficient() -> None:
@@ -210,7 +211,7 @@ def test_supported_candidate_makes_record_evidence_sufficient() -> None:
         "CONSUMER_DECEPTION",
         ["E1"],
         score=7,
-        official=True,
+        official=False,
     )
     unresolved = review(
         "FALSE_EXAGGERATED",

@@ -180,10 +180,7 @@ def build_markdown_report(
         review
         for product in output.get("product_results", [])
         for review in product.get("violation_reviews", [])
-        if (
-            review.get("status") in {"HIGH", "REVIEW", "LOW"}
-            and review.get("official_evidence_ids")
-        )
+        if review.get("status") in {"HIGH", "REVIEW", "LOW"}
     ]
     unresolved = [
         review
@@ -199,11 +196,11 @@ def build_markdown_report(
             [
                 "",
                 (
-                    "> Rule·원문 문제표현·공식근거 ID가 연결된 유효 위반 "
-                    "후보가 있어 전체 검토상태를 "
-                    "`SUFFICIENT_EVIDENCE`로 평가했습니다. 공식근거 미확보 "
-                    "후보는 별도로 유지하되 위험도·대표유형 집계에서 "
-                    "제외합니다."
+                    "> 점수별 증거요건을 충족한 유효 위반 후보가 있어 전체 "
+                    "검토상태를 `SUFFICIENT_EVIDENCE`로 평가했습니다. "
+                    "1~7점 후보는 공식근거 ID가 없어도 유효하지만 담당자 "
+                    "확인이 필요하며, 8~10점 후보는 공식근거 ID가 "
+                    "필수입니다."
                 ),
             ]
         )
@@ -212,7 +209,7 @@ def build_markdown_report(
             [
                 "",
                 (
-                    f"> 공식근거 미확보 후보 {len(unresolved)}개는 "
+                    f"> 증거요건 미충족 후보 {len(unresolved)}개는 "
                     "`INSUFFICIENT_EVIDENCE`로 유지되며 담당자 확인이 "
                     "필요합니다."
                 ),
