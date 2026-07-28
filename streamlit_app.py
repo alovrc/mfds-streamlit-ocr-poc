@@ -24,6 +24,18 @@ from result_partition import independent_review_output
 from web_capture import CaptureError
 
 STORE_ALIASES = ("FS01_PRODUCT_GATE", "FS11_FOOD_REVIEW", "FS21_HFF_REVIEW")
+UNCERTAINTY_LABELS = {
+    "SEARCH_NO_OFFICIAL_EVIDENCE": "보조 공식근거 미검색",
+}
+
+
+def display_uncertainty_codes(codes: list[str]) -> str:
+    """Return user-facing labels while preserving raw codes in JSON outputs."""
+
+    return ", ".join(
+        UNCERTAINTY_LABELS.get(str(code), str(code))
+        for code in codes
+    )
 
 
 def configure_from_secrets() -> None:
@@ -139,7 +151,9 @@ def review_rows(results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
                     "상태": product["product_overall_status"],
                     "위험도": product["product_overall_risk_score"],
                     "담당자 검토": product["requires_human_review"],
-                    "불확실성 코드": ", ".join(product["uncertainty_codes"]),
+                    "불확실성 코드": display_uncertainty_codes(
+                        product["uncertainty_codes"]
+                    ),
                 }
             )
     return sorted(
@@ -422,7 +436,10 @@ def render_independent_report(report: dict[str, Any]) -> None:
                 "위험도": item["risk_score"],
                 "Rule ID 수": len(item["rule_ids"]),
                 "공식근거 ID 수": len(item["official_evidence_ids"]),
-                "불확실성": ", ".join(item["uncertainty_codes"]) or "-",
+                "불확실성": display_uncertainty_codes(
+                    item["uncertainty_codes"]
+                )
+                or "-",
             }
             for item in findings
         ]
@@ -467,7 +484,9 @@ def render_independent_report(report: dict[str, Any]) -> None:
                 if item["uncertainty_codes"]:
                     st.warning(
                         "확인 필요: "
-                        + ", ".join(item["uncertainty_codes"])
+                        + display_uncertainty_codes(
+                            item["uncertainty_codes"]
+                        )
                     )
     if unresolved_findings:
         with st.expander(
@@ -488,7 +507,7 @@ def render_independent_report(report: dict[str, Any]) -> None:
                         "공식근거 ID 수": len(
                             item["official_evidence_ids"]
                         ),
-                        "확인 필요": ", ".join(
+                        "확인 필요": display_uncertainty_codes(
                             item["uncertainty_codes"]
                         )
                         or "-",

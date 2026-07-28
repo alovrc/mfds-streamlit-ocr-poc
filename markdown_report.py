@@ -7,6 +7,17 @@ from typing import Any
 
 from result_partition import ACTIVE_STATUSES, VIOLATION_LABELS
 
+UNCERTAINTY_LABELS = {
+    "SEARCH_NO_OFFICIAL_EVIDENCE": "보조 공식근거 미검색",
+}
+
+
+def _uncertainty_text(codes: list[str]) -> str:
+    return ", ".join(
+        UNCERTAINTY_LABELS.get(str(code), str(code))
+        for code in codes
+    )
+
 
 def _text(value: Any, default: str = "-") -> str:
     if value in (None, "", [], {}):
@@ -329,7 +340,9 @@ def build_markdown_report(
                 route.get("stage2_route"),
                 route.get("store_alias"),
                 ", ".join(classified.get("evidence_ids", [])),
-                ", ".join(classified.get("uncertainty_codes", [])),
+                _uncertainty_text(
+                    classified.get("uncertainty_codes", [])
+                ),
             )
         )
     lines.extend(
@@ -415,7 +428,13 @@ def build_markdown_report(
                 f"- Rule ID: {_text(review.get('rule_ids'))}",
                 f"- 공식근거 ID: {_text(review.get('official_evidence_ids'))}",
                 f"- 사례 ID: {_text(review.get('case_ids'))}",
-                f"- 불확실성 코드: {_text(review.get('uncertainty_codes'))}",
+                "- 불확실성 코드: "
+                + (
+                    _uncertainty_text(
+                        review.get("uncertainty_codes", [])
+                    )
+                    or "-"
+                ),
                 "- 문제 표현:",
             ]
         )
@@ -529,7 +548,8 @@ def build_markdown_report(
     ]
     if uncertainty_codes:
         review_items.append(
-            "오류·불확실성 코드 확인: " + ", ".join(uncertainty_codes)
+            "오류·불확실성 코드 확인: "
+            + _uncertainty_text(uncertainty_codes)
         )
     lines.extend(f"- {item}" for item in review_items)
     lines.extend(

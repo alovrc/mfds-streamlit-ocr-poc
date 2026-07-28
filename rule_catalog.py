@@ -33,6 +33,18 @@ def load_rule_catalog() -> dict[str, Any]:
 
     if not catalog.get("catalog_version"):
         raise RuleCatalogError("RULE_CATALOG_VERSION_MISSING")
+    source_files = catalog.get("source_files")
+    if (
+        not isinstance(source_files, list)
+        or not source_files
+        or any(
+            not isinstance(item, dict)
+            or not item.get("name")
+            or not item.get("sha256")
+            for item in source_files
+        )
+    ):
+        raise RuleCatalogError("RULE_CATALOG_SOURCE_HASH_MISSING")
     aliases = catalog.get("violation_type_aliases")
     rules = catalog.get("rules")
     if not isinstance(aliases, dict) or not isinstance(rules, list):
@@ -50,7 +62,10 @@ def load_rule_catalog() -> dict[str, Any]:
             or not rule.get("violation_type")
             or not rule.get("source_document")
             or not rule.get("article")
+            or not rule.get("effective_from")
             or not rule.get("source_url")
+            or not rule.get("condition_text")
+            or not rule.get("decision_text")
         ):
             raise RuleCatalogError("RULE_CATALOG_INVALID")
         seen.add(rule_id)
