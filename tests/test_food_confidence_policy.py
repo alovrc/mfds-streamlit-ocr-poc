@@ -1,6 +1,6 @@
 from scripts.run_pipeline import (
     apply_food_hff_confusion_guardrail,
-    normalize_stage1_food_confidence,
+    normalize_stage1_product_type_confidence,
     normalize_stage2_statuses,
 )
 
@@ -82,34 +82,76 @@ def stage2_output() -> dict:
     }
 
 
-def test_promotes_food_fallback_at_point_eight() -> None:
+def test_routes_food_candidate_at_point_five() -> None:
     output = stage1_output(
         product_type="FOOD_FALLBACK",
-        food_confidence=0.80,
+        food_confidence=0.50,
         hff_confidence=0.15,
     )
 
-    normalize_stage1_food_confidence(output)
+    normalize_stage1_product_type_confidence(output)
 
     assert output["products"][0]["product_type"] == "FOOD"
-    assert output["products"][0]["confidence"] == 0.80
+    assert output["products"][0]["confidence"] == 0.50
     assert output["record_product_type"] == "FOOD"
+    assert output["routes"][0]["store_alias"] == "FS11_FOOD_REVIEW"
     assert output["requires_human_review"] is True
 
 
-def test_does_not_promote_food_fallback_below_point_eight() -> None:
+def test_routes_hff_candidate_at_point_five() -> None:
     output = stage1_output(
         product_type="FOOD_FALLBACK",
-        food_confidence=0.79,
-        hff_confidence=0.15,
+        food_confidence=0.15,
+        hff_confidence=0.50,
     )
 
-    normalize_stage1_food_confidence(output)
+    normalize_stage1_product_type_confidence(output)
 
-    assert output["products"][0]["product_type"] == "FOOD_FALLBACK"
+    assert (
+        output["products"][0]["product_type"]
+        == "HEALTH_FUNCTIONAL_FOOD"
+    )
+    assert output["record_product_type"] == "HEALTH_FUNCTIONAL_FOOD"
+    assert output["routes"][0]["stage2_route"] == "HFF_REVIEW"
+    assert output["routes"][0]["store_alias"] == "FS21_HFF_REVIEW"
 
 
-def test_does_not_promote_conflicting_product_type_evidence() -> None:
+def test_both_scores_below_point_five_require_human_review() -> None:
+    output = stage1_output(
+        product_type="FOOD_FALLBACK",
+        food_confidence=0.49,
+        hff_confidence=0.20,
+    )
+
+    normalize_stage1_product_type_confidence(output)
+
+    assert output["products"][0]["product_type"] == "UNCERTAIN"
+    assert output["record_product_type"] == "UNCERTAIN"
+    assert output["routes"][0]["stage2_route"] == "NO_STAGE2"
+    assert output["routes"][0]["store_alias"] == "FS01_PRODUCT_GATE"
+    assert "PRODUCT_NAME_UNCLEAR" in output["uncertainty_codes"]
+
+
+def test_near_tied_scores_require_human_review() -> None:
+    output = stage1_output(
+        product_type="FOOD_FALLBACK",
+        food_confidence=0.60,
+        hff_confidence=0.56,
+    )
+
+    normalize_stage1_product_type_confidence(output)
+
+    product = output["products"][0]
+    assert product["product_type"] == "UNCERTAIN"
+    assert "CONFLICTING_PRODUCT_TYPE_EVIDENCE" in product["uncertainty_codes"]
+    assert (
+        "CONFLICTING_PRODUCT_TYPE_EVIDENCE"
+        in output["uncertainty_codes"]
+    )
+    assert output["routes"][0]["stage2_route"] == "NO_STAGE2"
+
+
+def test_explicit_conflicting_evidence_requires_human_review() -> None:
     output = stage1_output(
         product_type="FOOD_FALLBACK",
         food_confidence=0.90,
@@ -117,9 +159,9 @@ def test_does_not_promote_conflicting_product_type_evidence() -> None:
         uncertainty_codes=["CONFLICTING_PRODUCT_TYPE_EVIDENCE"],
     )
 
-    normalize_stage1_food_confidence(output)
+    normalize_stage1_product_type_confidence(output)
 
-    assert output["products"][0]["product_type"] == "FOOD_FALLBACK"
+    assert output["products"][0]["product_type"] == "UNCERTAIN"
 
 
 def test_point_five_food_candidate_with_supplement_term_is_reviewed() -> None:

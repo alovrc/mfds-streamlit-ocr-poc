@@ -31,8 +31,9 @@ from validators.core import (
     validate_stage2_input,
 )
 
-HIGH_CONFIDENCE_FOOD_THRESHOLD = 0.80
-FOOD_REVIEW_THRESHOLD = 0.50
+PRODUCT_TYPE_CANDIDATE_THRESHOLD = 0.50
+PRODUCT_TYPE_TIE_MARGIN = 0.05
+FOOD_REVIEW_THRESHOLD = PRODUCT_TYPE_CANDIDATE_THRESHOLD
 
 
 def sanitize_unicode_surrogates(value: Any) -> Any:
@@ -166,55 +167,166 @@ def stage1(provider: str, source: dict[str, Any]) -> dict[str, Any]:
             f"{source['title']} {source['body_text']}"
         )
     apply_product_master_lookup(result.data, master_lookup)
-    normalize_stage1_food_confidence(result.data)
+    normalize_stage1_product_type_confidence(result.data)
     validate_schema(result.data, "stage1_output.schema.json")
     validate_stage1_links(result.data)
     return result.data
 
 
-def normalize_stage1_food_confidence(output: dict[str, Any]) -> None:
-    """Promote a supported high-confidence food candidate deterministically."""
+def normalize_stage1_product_type_confidence(
+    output: dict[str, Any],
+) -> None:
+    """Route non-master candidates symmetrically from confidence scores.
 
-    promoted_indexes: set[int] = set()
+    A unique exact product-master match remains authoritative. Other products
+    are routed only when one score is at least 0.50 and leads the other by
+    more than the 0.05 tie margin. Low or near-tied scores remain uncertain
+    and are not sent to a type-specific stage-2 store automatically.
+    """
+
+    route_by_index = {
+        route.get("product_index"): route
+        for route in output.get("routes", [])
+    }
+    normalized_types: list[str] = []
+    decisions: list[str] = []
+    needs_human_review = False
+    record_uncertainty = output.setdefault("uncertainty_codes", [])
+
     for product in output.get("products", []):
-        product_type = product.get("product_type")
-        food_confidence = product.get("food_confidence")
-        hff_confidence = product.get("hff_confidence")
-        uncertainty_codes = product.get("uncertainty_codes", [])
-        if (
-            product_type not in {"FOOD_FALLBACK", "UNCERTAIN"}
-            or not isinstance(food_confidence, (int, float))
-            or not isinstance(hff_confidence, (int, float))
-            or food_confidence < HIGH_CONFIDENCE_FOOD_THRESHOLD
-            or food_confidence <= hff_confidence
-            or "CONFLICTING_PRODUCT_TYPE_EVIDENCE" in uncertainty_codes
-        ):
+        product_index = product.get("product_index")
+        route = route_by_index.get(product_index)
+        if route is None or product.get("product_type") == "OUT_OF_SCOPE":
             continue
 
-        product["product_type"] = "FOOD"
-        product["confidence"] = food_confidence
-        if product.get("product_subtype") == "NOT_APPLICABLE":
-            product["product_subtype"] = "UNKNOWN_FOOD"
-        promoted_indexes.add(product["product_index"])
+        evidence_ids = product.get("evidence_ids", [])
+        if any(
+            str(evidence_id).startswith("HFF_MASTER::")
+            for evidence_id in evidence_ids
+        ):
+            normalized_types.append("HEALTH_FUNCTIONAL_FOOD")
+            continue
 
-    if not promoted_indexes:
-        return
+        food_confidence = product.get("food_confidence")
+        hff_confidence = product.get("hff_confidence")
+        uncertainty_codes = product.setdefault("uncertainty_codes", [])
+        scores_valid = (
+            isinstance(food_confidence, (int, float))
+            and not isinstance(food_confidence, bool)
+            and isinstance(hff_confidence, (int, float))
+            and not isinstance(hff_confidence, bool)
+        )
 
-    for route in output.get("routes", []):
-        if route.get("product_index") in promoted_indexes:
+        if not scores_valid:
+            decision = "UNCERTAIN"
+        else:
+            score_gap = abs(food_confidence - hff_confidence)
+            both_below = (
+                food_confidence < PRODUCT_TYPE_CANDIDATE_THRESHOLD
+                and hff_confidence < PRODUCT_TYPE_CANDIDATE_THRESHOLD
+            )
+            conflicting = (
+                "CONFLICTING_PRODUCT_TYPE_EVIDENCE" in uncertainty_codes
+                or score_gap <= PRODUCT_TYPE_TIE_MARGIN
+            )
+            if both_below or conflicting:
+                decision = "UNCERTAIN"
+            elif (
+                food_confidence >= PRODUCT_TYPE_CANDIDATE_THRESHOLD
+                and food_confidence > hff_confidence
+            ):
+                decision = "FOOD"
+            elif (
+                hff_confidence >= PRODUCT_TYPE_CANDIDATE_THRESHOLD
+                and hff_confidence > food_confidence
+            ):
+                decision = "HEALTH_FUNCTIONAL_FOOD"
+            else:
+                decision = "UNCERTAIN"
+
+        product["product_type"] = decision
+        product["confidence"] = (
+            max(food_confidence, hff_confidence)
+            if scores_valid
+            else 0.0
+        )
+
+        if decision == "FOOD":
+            needs_human_review = True
+            if product.get("product_subtype") == "NOT_APPLICABLE":
+                product["product_subtype"] = "UNKNOWN_FOOD"
             route["stage2_route"] = "FOOD_REVIEW"
             route["store_alias"] = "FS11_FOOD_REVIEW"
+            decisions.append(
+                f"제품 {product_index}: food_confidence 0.50 이상 식품 후보"
+            )
+        elif decision == "HEALTH_FUNCTIONAL_FOOD":
+            needs_human_review = True
+            product["product_subtype"] = "NOT_APPLICABLE"
+            route["stage2_route"] = "HFF_REVIEW"
+            route["store_alias"] = "FS21_HFF_REVIEW"
+            decisions.append(
+                f"제품 {product_index}: hff_confidence 0.50 이상 건기식 후보"
+            )
+        else:
+            needs_human_review = True
+            product["product_subtype"] = "NOT_APPLICABLE"
+            route["stage2_route"] = "NO_STAGE2"
+            route["store_alias"] = "FS01_PRODUCT_GATE"
+            if (
+                scores_valid
+                and food_confidence < PRODUCT_TYPE_CANDIDATE_THRESHOLD
+                and hff_confidence < PRODUCT_TYPE_CANDIDATE_THRESHOLD
+                and "PRODUCT_NAME_UNCLEAR" not in uncertainty_codes
+            ):
+                uncertainty_codes.append("PRODUCT_NAME_UNCLEAR")
+            if (
+                scores_valid
+                and abs(food_confidence - hff_confidence)
+                <= PRODUCT_TYPE_TIE_MARGIN
+                and "CONFLICTING_PRODUCT_TYPE_EVIDENCE"
+                not in uncertainty_codes
+            ):
+                uncertainty_codes.append(
+                    "CONFLICTING_PRODUCT_TYPE_EVIDENCE"
+                )
+            for code in (
+                "PRODUCT_NAME_UNCLEAR",
+                "CONFLICTING_PRODUCT_TYPE_EVIDENCE",
+            ):
+                if (
+                    code in uncertainty_codes
+                    and code not in record_uncertainty
+                ):
+                    record_uncertainty.append(code)
+            decisions.append(
+                f"제품 {product_index}: 품목 불명확·담당자 검토"
+            )
 
-    products = output.get("products", [])
-    if len(products) == 1 and products[0].get("product_index") in promoted_indexes:
-        output["record_product_type"] = "FOOD"
-    output["requires_human_review"] = True
-    reason = str(output.get("short_reason") or "").rstrip()
-    suffix = (
-        "food_confidence 0.80 이상 기준으로 식품 검토 경로를 적용했으며 "
-        "담당자 확인이 필요함"
-    )
-    output["short_reason"] = f"{reason}; {suffix}" if reason else suffix
+        normalized_types.append(decision)
+
+    if not normalized_types:
+        return
+
+    if len(normalized_types) == 1:
+        output["record_product_type"] = normalized_types[0]
+    elif len(set(normalized_types)) == 1:
+        output["record_product_type"] = normalized_types[0]
+    else:
+        output["record_product_type"] = "UNCERTAIN"
+
+    if needs_human_review:
+        output["requires_human_review"] = True
+    if decisions:
+        reason = str(output.get("short_reason") or "").rstrip()
+        suffix = "; ".join(decisions)
+        output["short_reason"] = f"{reason}; {suffix}" if reason else suffix
+
+
+def normalize_stage1_food_confidence(output: dict[str, Any]) -> None:
+    """Backward-compatible alias for the symmetric routing normalizer."""
+
+    normalize_stage1_product_type_confidence(output)
 
 
 def make_stage2_input(

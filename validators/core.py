@@ -66,13 +66,54 @@ def validate_stage1_links(stage1: dict[str, Any]) -> None:
         raise ContractValidationError("products/routes product_index mismatch")
     if stage1["multi_product"] != (len(product_indexes) > 1):
         raise ContractValidationError("multi_product does not match products length")
+    routes = {
+        item["product_index"]: item
+        for item in stage1["routes"]
+    }
     for product in stage1["products"]:
+        product_type = product["product_type"]
+        food_confidence = product["food_confidence"]
+        hff_confidence = product["hff_confidence"]
+        route = routes[product["product_index"]]
+        master_match = any(
+            str(evidence_id).startswith("HFF_MASTER::")
+            for evidence_id in product["evidence_ids"]
+        )
         if (
-            product["product_type"] == "FOOD_FALLBACK"
-            and product["food_confidence"] >= 0.80
+            product_type == "FOOD"
+            and (
+                food_confidence < 0.50
+                or food_confidence <= hff_confidence
+                or route["stage2_route"] != "FOOD_REVIEW"
+                or route["store_alias"] != "FS11_FOOD_REVIEW"
+            )
         ):
             raise ContractValidationError(
-                "FOOD_FALLBACK food_confidence must be below 0.80"
+                "FOOD requires dominant food_confidence >= 0.50 and FS11 route"
+            )
+        if (
+            product_type == "HEALTH_FUNCTIONAL_FOOD"
+            and not master_match
+            and (
+                hff_confidence < 0.50
+                or hff_confidence <= food_confidence
+                or route["stage2_route"] != "HFF_REVIEW"
+                or route["store_alias"] != "FS21_HFF_REVIEW"
+            )
+        ):
+            raise ContractValidationError(
+                "HEALTH_FUNCTIONAL_FOOD requires dominant hff_confidence "
+                ">= 0.50 and FS21 route"
+            )
+        if (
+            product_type == "UNCERTAIN"
+            and (
+                route["stage2_route"] != "NO_STAGE2"
+                or route["store_alias"] != "FS01_PRODUCT_GATE"
+            )
+        ):
+            raise ContractValidationError(
+                "UNCERTAIN requires NO_STAGE2 and FS01 route"
             )
 
 

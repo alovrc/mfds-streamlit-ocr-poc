@@ -27,6 +27,13 @@ def setup_function() -> None:
     openai_client._STORE_ID_CACHE.clear()
 
 
+def test_fs01_default_points_to_latest_code_store() -> None:
+    assert (
+        openai_client.STORE_NAMES["FS01_PRODUCT_GATE"]
+        == "MFDS_FS01_PRODUCT_TYPE_20260728_V01"
+    )
+
+
 def test_classifies_insufficient_quota_without_exposing_message() -> None:
     error = RuntimeError(
         "429 insufficient_quota: You exceeded your current quota"
