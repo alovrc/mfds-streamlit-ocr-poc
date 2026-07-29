@@ -8,6 +8,7 @@ from ocr_pipeline import (
     collect_and_ocr,
     merge_capture_text,
     prepare_image,
+    trim_ocr_text,
 )
 from web_capture import CaptureError, PageCapture
 
@@ -34,8 +35,22 @@ def test_analysis_text_prefers_reviewer_text() -> None:
         )
         == "담당자 수정"
     )
-    assert analysis_text({"ocr_text": "엔진 원문", "reviewed_text": None}) == (
-        "엔진 원문"
+    assert (
+        analysis_text({"ocr_text": "??\nPOLICARE BOOSTER??", "reviewed_text": None})
+        == "POLICARE BOOSTER"
+    )
+
+
+def test_trim_ocr_text_removes_symbol_noise_and_keeps_useful_lines() -> None:
+    raw_text = (
+        "??\n,^/\nPOLICARE BOOSTER??||\n2,600 mg x 30 (78 g)\n"
+        "건강기능식품 | 비타민 B1, B2, B6, 엽산\n~~~"
+    )
+
+    assert trim_ocr_text(raw_text) == (
+        "POLICARE BOOSTER\n"
+        "2,600 mg x 30 (78 g)\n"
+        "건강기능식품 비타민 B1, B2, B6, 엽산"
     )
 
 

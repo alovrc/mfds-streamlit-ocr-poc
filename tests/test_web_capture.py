@@ -2,7 +2,21 @@ import socket
 
 import pytest
 
-from web_capture import CaptureError, extract_page_content, validate_public_url
+from web_capture import CaptureError, _decode_html, extract_page_content, validate_public_url
+
+
+def test_decode_html_honors_declared_korean_charset() -> None:
+    html = "<html><body>여성 건강 정보</body></html>".encode("cp949")
+
+    assert _decode_html(html, "text/html; charset=EUC-KR") == (
+        "<html><body>여성 건강 정보</body></html>"
+    )
+
+
+def test_decode_html_uses_meta_charset_when_header_is_missing() -> None:
+    html = '<meta charset="cp949"><p>건강기능식품</p>'.encode("cp949")
+
+    assert _decode_html(html, "text/html") == '<meta charset="cp949"><p>건강기능식품</p>'
 
 
 def resolver_for(address: str):

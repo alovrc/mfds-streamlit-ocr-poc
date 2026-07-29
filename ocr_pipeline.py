@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
+import unicodedata
 from collections import Counter
 from collections.abc import Callable
 from typing import Any
@@ -21,6 +23,16 @@ OCR_STATUSES = {
 }
 MAX_IMAGES_PER_PAGE = 20
 OCR_TIMEOUT_SECONDS = 20
+
+
+_OCR_ALLOWED_CHARACTERS = re.compile(
+    r"[^0-9A-Za-z\uac00-\ud7a3\u3131-\u314e\u314f-\u3163\s.,:;()\[\]/%+\-\u00d7x]"
+)
+_OCR_MEANINGFUL_WORD = re.compile(r"[\uac00-\ud7a3]{2,}|[A-Za-z]{2,}")
+_OCR_MEANINGFUL_MEASUREMENT = re.compile(
+    r"\d[\d,]*(?:\.\d+)?\s*(?:mg|g|ml|%|\uac1c|\uc815|\ud3ec|x|\u00d7)\b",
+    re.IGNORECASE,
+)
 
 
 def prepare_image(image_bytes: bytes) -> Image.Image:
@@ -51,10 +63,44 @@ def tesseract_ocr(image_bytes: bytes) -> str:
     ).strip()
 
 
+def trim_ocr_text(text: str) -> str:
+    """Remove OCR-only symbol noise without modifying the stored engine output.
+
+    This is intentionally a conservative cleanup for the analysis payload. It
+    does not repair character encoding or infer missing characters; the raw
+    ``ocr_text`` remains available to the reviewer unchanged.
+    """
+
+    normalized = unicodedata.normalize("NFKC", str(text or ""))
+    lines: list[str] = []
+    source_lines = normalized.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for source_line in source_lines:
+        without_controls = "".join(
+            " " if unicodedata.category(char).startswith("C") else char
+            for char in source_line
+        )
+        cleaned = without_controls.replace("\ufffd", " ").replace("?", " ")
+        cleaned = _OCR_ALLOWED_CHARACTERS.sub(" ", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        cleaned = cleaned.strip(" ,.:;+/\\-\u00d7")
+        if not cleaned:
+            continue
+        if not (
+            _OCR_MEANINGFUL_WORD.search(cleaned)
+            or _OCR_MEANINGFUL_MEASUREMENT.search(cleaned)
+        ):
+            continue
+        lines.append(cleaned)
+    return "\n".join(lines)
+
+
 def analysis_text(record: dict[str, Any]) -> str:
     """Select the reviewer text without overwriting the OCR engine output."""
 
-    return str(record.get("reviewed_text") or record.get("ocr_text") or "").strip()
+    reviewed_text = record.get("reviewed_text")
+    if reviewed_text:
+        return str(reviewed_text).strip()
+    return trim_ocr_text(str(record.get("ocr_text") or ""))
 
 
 def merge_capture_text(

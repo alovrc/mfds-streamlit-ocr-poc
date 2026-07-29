@@ -8,6 +8,7 @@ used to reach private or link-local services.
 from __future__ import annotations
 
 import ipaddress
+import re
 import socket
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ MAX_HTML_BYTES = 2 * 1024 * 1024
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_REDIRECTS = 5
 REQUEST_TIMEOUT_SECONDS = 12.0
+_CHARSET_PATTERN = re.compile(r"charset\s*=\s*[\"']?([A-Za-z0-9._-]+)", re.IGNORECASE)
 
 
 class CaptureError(RuntimeError):
@@ -171,21 +173,17 @@ def fetch_public_bytes(
                         )
                         continue
                     response.raise_for_status()
-                    content_type = (
-                        response.headers.get("content-type", "")
-                        .split(";", 1)[0]
-                        .strip()
-                        .lower()
-                    )
-                    if not content_type.startswith(expected_prefix):
+                    content_type_header = response.headers.get("content-type", "")
+                    media_type = content_type_header.split(";", 1)[0].strip().lower()
+                    if not media_type.startswith(expected_prefix):
                         raise CaptureError(
                             "UNSUPPORTED_CONTENT_TYPE",
-                            f"지원하지 않는 콘텐츠 형식입니다: {content_type or '-'}",
+                            f"지원하지 않는 콘텐츠 형식입니다: {media_type or '-'}",
                         )
                     return (
                         str(response.url),
                         _read_limited(response, max_bytes),
-                        content_type,
+                        content_type_header,
                     )
             except CaptureError:
                 raise
@@ -209,10 +207,32 @@ def fetch_public_bytes(
 
 
 def _decode_html(content: bytes, content_type: str) -> str:
-    charset = "utf-8"
-    if "charset=" in content_type:
-        charset = content_type.split("charset=", 1)[1].split(";", 1)[0]
-    return content.decode(charset, errors="replace")
+    """Decode HTML using its declared charset before Korean legacy fallbacks."""
+
+    candidates: list[str] = []
+    header_match = _CHARSET_PATTERN.search(content_type)
+    if header_match:
+        candidates.append(header_match.group(1))
+
+    # Charset declarations appear near the start of an HTML document and are
+    # ASCII-compatible, so this inspection does not corrupt Korean text.
+    html_head = content[:8192].decode("ascii", errors="ignore")
+    meta_match = _CHARSET_PATTERN.search(html_head)
+    if meta_match:
+        candidates.append(meta_match.group(1))
+
+    candidates.extend(("utf-8-sig", "cp949", "euc-kr"))
+    attempted: set[str] = set()
+    for charset in candidates:
+        normalized = charset.strip().lower()
+        if not normalized or normalized in attempted:
+            continue
+        attempted.add(normalized)
+        try:
+            return content.decode(normalized, errors="strict")
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return content.decode("utf-8", errors="replace")
 
 
 def extract_page_content(html_text: str, base_url: str) -> PageCapture:
