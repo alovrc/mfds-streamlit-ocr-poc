@@ -441,8 +441,7 @@ def _render_ocr_capture_editor(capture: dict[str, Any]) -> None:
 def render_input() -> dict[str, Any]:
     st.subheader("광고 입력")
     st.info(
-        "OCR 시험 기능입니다. 운영 앱에는 아직 반영되지 않았으며 "
-        "Tesseract가 Streamlit 서버에서 직접 실행됩니다."
+        "OCR 시험 기능입니다. Tesseract가 Streamlit 서버에서 직접 실행됩니다."
     )
     record_id = st.text_input(
         "레코드 ID",
