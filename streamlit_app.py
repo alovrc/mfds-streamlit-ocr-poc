@@ -16,7 +16,12 @@ from PIL import Image, UnidentifiedImageError
 PACKAGE_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PACKAGE_ROOT))
 
-from scripts.run_pipeline import failure_record, run
+from scripts.run_pipeline import (
+    failure_record,
+    run,
+    sanitize_unicode_surrogates,
+    stage1,
+)
 from auth import verify_password
 from markdown_report import build_markdown_report
 from ocr_pipeline import collect_and_ocr, merge_capture_text
@@ -202,6 +207,136 @@ def run_provider(provider: str, source: dict[str, Any]) -> None:
             st.session_state.sources[provider] = dict(source)
             st.session_state.failures.pop(provider, None)
             st.success(f"{provider} 실행과 계약 검증이 완료됐습니다.")
+
+
+def _load_stage1_jsonl(uploaded_file: Any) -> list[dict[str, Any]]:
+    """Parse fixed Stage 1 inputs without collecting their source URLs."""
+
+    raw_text = uploaded_file.getvalue().decode("utf-8-sig")
+    records: list[dict[str, Any]] = []
+    for line_number, raw_line in enumerate(raw_text.splitlines(), start=1):
+        if not raw_line.strip():
+            continue
+        try:
+            record = json.loads(raw_line)
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                f"JSONL {line_number}번째 줄 형식 오류: {error.msg}"
+            ) from error
+        if not isinstance(record, dict):
+            raise ValueError(
+                f"JSONL {line_number}번째 줄은 JSON 객체여야 합니다."
+            )
+        records.append(sanitize_unicode_surrogates(record))
+    if not records:
+        raise ValueError("비어 있지 않은 JSONL 입력이 필요합니다.")
+    if len(records) > 50:
+        raise ValueError("PoC 일괄 검증은 한 번에 최대 50건까지 실행할 수 있습니다.")
+    return records
+
+
+def render_stage1_batch_verification(openai_configured: bool) -> None:
+    """Run fixed JSONL inputs through FS01 only; never run capture or OCR."""
+
+    with st.expander("식약처 1단계 일괄 검증", expanded=False):
+        st.caption(
+            "JSONL의 title/body_text를 고정 입력으로 FS01 제품유형 검토만 실행합니다. "
+            "source_url은 출처 메타데이터로만 전달되며 URL 수집·이미지 OCR·"
+            "2단계 검토는 실행하지 않습니다."
+        )
+        uploaded_file = st.file_uploader(
+            "검증 JSONL 파일",
+            type=["jsonl"],
+            key="stage1_batch_jsonl",
+        )
+        if not uploaded_file:
+            return
+
+        try:
+            records = _load_stage1_jsonl(uploaded_file)
+        except (UnicodeDecodeError, ValueError) as error:
+            st.error(str(error))
+            return
+
+        st.caption(
+            f"검증 대상: {len(records)}건 · OpenAI FS01 논리 호출: {len(records)}회"
+        )
+        if not st.button(
+            "FS01 일괄 검증 실행",
+            type="primary",
+            disabled=not openai_configured,
+            key="run_stage1_batch",
+            use_container_width=True,
+        ):
+            return
+
+        results: list[dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
+        progress = st.progress(0, text="FS01 일괄 검증 준비 중")
+        for index, source in enumerate(records, start=1):
+            record_id = str(source.get("record_id") or f"LINE-{index}")
+            try:
+                output = stage1("openai", source)
+            except Exception as error:
+                failure = failure_record(source, "openai", "stage1", error)
+                results.append(
+                    {
+                        "record_id": record_id,
+                        "status": "FAILED",
+                        "input": source,
+                        "failure": failure,
+                    }
+                )
+                rows.append(
+                    {
+                        "레코드 ID": record_id,
+                        "상태": "FAILED",
+                        "제품유형": "",
+                        "2단계 경로": "",
+                        "오류": failure["error_code"],
+                    }
+                )
+            else:
+                routes = output.get("routes", [])
+                products = output.get("products", [])
+                first_product = products[0] if products else {}
+                results.append(
+                    {
+                        "record_id": record_id,
+                        "status": "SUCCESS",
+                        "input": source,
+                        "stage1": output,
+                    }
+                )
+                rows.append(
+                    {
+                        "레코드 ID": record_id,
+                        "상태": "SUCCESS",
+                        "제품유형": first_product.get("product_type", ""),
+                        "식품 confidence": first_product.get("food_confidence", ""),
+                        "건기식 confidence": first_product.get("hff_confidence", ""),
+                        "2단계 경로": ", ".join(
+                            str(route.get("stage2_route", "")) for route in routes
+                        ),
+                        "오류": "",
+                    }
+                )
+            progress.progress(
+                index / len(records),
+                text=f"FS01 검증 {index}/{len(records)}",
+            )
+
+        st.dataframe(rows, hide_index=True, use_container_width=True)
+        output_jsonl = "\n".join(
+            json.dumps(item, ensure_ascii=False) for item in results
+        ) + "\n"
+        st.download_button(
+            "1단계 일괄 검증 결과 JSONL 다운로드",
+            output_jsonl,
+            file_name="stage1_mfds_verification_result.jsonl",
+            mime="application/x-ndjson",
+            use_container_width=True,
+        )
 
 
 def _reset_ocr_capture() -> None:
@@ -712,6 +847,7 @@ def main() -> None:
     st.session_state.setdefault("sources", {})
     st.session_state.setdefault("failures", {})
     source = render_input()
+    render_stage1_batch_verification(openai_configured)
     st.divider()
     offline_col, openai_col, gemini_col, clear_col = st.columns(4)
     if offline_col.button("오프라인 계약 실행", use_container_width=True):
