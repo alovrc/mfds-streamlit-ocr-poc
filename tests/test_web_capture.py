@@ -86,3 +86,17 @@ def test_extract_page_content_prefers_article_and_deduplicates_images() -> None:
         "https://blog.example.com/image/a.jpg",
         "https://cdn.example.com/b.png",
     )
+
+
+def test_extract_page_content_uses_original_pstatic_image_not_thumbnail() -> None:
+    html = """
+    <div class="se-main-container">
+      <img src="https://store-phinf.pstatic.net/example/original_24.png?type=p100_100">
+    </div>
+    """
+
+    result = extract_page_content(html, "https://blog.naver.com/example/1")
+
+    assert result.image_urls == (
+        "https://store-phinf.pstatic.net/example/original_24.png",
+    )

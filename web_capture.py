@@ -12,7 +12,7 @@ import re
 import socket
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -26,6 +26,7 @@ MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_REDIRECTS = 5
 REQUEST_TIMEOUT_SECONDS = 12.0
 _CHARSET_PATTERN = re.compile(r"charset\s*=\s*[\"']?([A-Za-z0-9._-]+)", re.IGNORECASE)
+_PSTATIC_THUMBNAIL_TYPE = re.compile(r"p\d+_\d+", re.IGNORECASE)
 
 
 class CaptureError(RuntimeError):
@@ -235,6 +236,24 @@ def _decode_html(content: bytes, content_type: str) -> str:
     return content.decode("utf-8", errors="replace")
 
 
+def _prefer_original_pstatic_image_url(url: str) -> str:
+    """Remove Naver's small ``p100_100`` thumbnail request from original files."""
+
+    parsed = urlsplit(url)
+    hostname = (parsed.hostname or "").lower()
+    if not hostname.endswith("pstatic.net"):
+        return url
+    query_items = parse_qsl(parsed.query, keep_blank_values=True)
+    retained_items = [
+        (key, value)
+        for key, value in query_items
+        if not (key.lower() == "type" and _PSTATIC_THUMBNAIL_TYPE.fullmatch(value))
+    ]
+    if len(retained_items) == len(query_items):
+        return url
+    return urlunsplit(parsed._replace(query=urlencode(retained_items)))
+
+
 def extract_page_content(html_text: str, base_url: str) -> PageCapture:
     """Extract a readable title, body and unique public image URLs."""
 
@@ -279,7 +298,9 @@ def extract_page_content(html_text: str, base_url: str) -> PageCapture:
         )
         if not value:
             continue
-        absolute = urljoin(base_url, str(value).strip())
+        absolute = _prefer_original_pstatic_image_url(
+            urljoin(base_url, str(value).strip())
+        )
         parsed_image = urlsplit(absolute)
         if parsed_image.scheme not in {"http", "https"}:
             continue
