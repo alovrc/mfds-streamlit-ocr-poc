@@ -850,8 +850,12 @@ def main() -> None:
     render_stage1_batch_verification(openai_configured)
     st.divider()
     offline_col, openai_col, gemini_col, clear_col = st.columns(4)
-    if offline_col.button("오프라인 계약 실행", use_container_width=True):
-        run_provider("offline", source)
+    offline_col.button(
+        "오프라인 계약 실행",
+        disabled=True,
+        help="오프라인 계약 실행은 비활성화되어 있습니다.",
+        use_container_width=True,
+    )
     if openai_col.button(
         "OpenAI 실행",
         type="primary",
