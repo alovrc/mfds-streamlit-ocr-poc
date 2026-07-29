@@ -22,8 +22,63 @@ API와 File Search를 이용한 2단계 분석, 로컬 Rule 연결, 결정론적
 | Gemini 비교 실행 | 일시 중단 |
 
 - 시험 배포: <https://mfds-filesearch-ocr-poc.streamlit.app/>
-- 개발 브랜치: `codex/streamlit-ocr-poc`
-- 운영 앱과 `main` 브랜치는 이 시험본과 분리하여 유지한다.
+- 독립 저장소: <https://github.com/alovrc/mfds-streamlit-ocr-poc>
+- 원본 `alovrc/mfds-streamlit`의 운영 앱과 소스는 이 PoC 저장소에서 변경하지
+  않는다.
+
+## 빠른 시작
+
+### 1. Python 환경 구성
+
+권장 환경은 Python 3.11과 Tesseract `kor+eng` 언어팩이다.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+### 2. 비밀값 설정
+
+로컬에서는 `.streamlit/secrets.toml`을 생성하되 Git에 커밋하지 않는다.
+필수값은 `OPENAI_API_KEY`와 세 Vector Store ID이며, 앱 접근을 제한할 때는
+비밀번호 해시 설정도 함께 사용한다. 전체 예시는
+[Streamlit Secrets](#streamlit-secrets) 절을 참고한다.
+
+### 3. 앱 실행
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
+```
+
+기본 브라우저에서 `http://localhost:8501`을 열고 URL 또는 광고 문구를
+입력한다. 실제 광고 자료를 사용하기 전에는 비식별 예제로 전체 흐름을 먼저
+확인한다.
+
+### 4. 회귀시험
+
+```powershell
+.\.venv\Scripts\python.exe -m compileall -q .
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+## 프로젝트 구조
+
+| 경로 | 역할 |
+| --- | --- |
+| `streamlit_app.py` | Streamlit 화면, 입력 검증, 분석 실행과 결과 다운로드 |
+| `web_capture.py` | 공개 URL 보안검증, 본문·이미지 수집 |
+| `ocr_pipeline.py` | 이미지 중복 제거와 Tesseract OCR |
+| `product_master.py` | 건강기능식품 제품 마스터 다운로드·무결성검사·정확조회 |
+| `adapters/openai/` | OpenAI Responses API와 File Search 연동 |
+| `prompts/`, `schemas/` | 단계별 프롬프트와 Structured Outputs 스키마 |
+| `rule_catalog.py`, `rule_catalog.json` | 로컬 Rule 검증과 결정론적 연결 |
+| `risk_aggregation.py`, `risk_rules.json` | 위험도와 대표유형 재계산 |
+| `result_partition.py` | 유효 후보와 미해결 후보 분리 |
+| `markdown_report.py` | 담당자용 Markdown 보고서 생성 |
+| `scripts/` | Rule 코퍼스 변환·검증·업로드 보조도구 |
+| `tests/` | 인증, 수집, OCR, 라우팅, Rule, 위험도와 UI 회귀시험 |
+| `output/`, `tmp/` | 로컬 실행 산출물과 임시파일; Git 추적 제외 |
 
 ## 전체 처리 구조
 
@@ -326,3 +381,18 @@ OPENAI_FS21_HFF_REVIEW_STORE_ID
 - File Search 업로드용 실제 파일
 - 실제 광고 원문, 이미지와 내부자료
 - 실행 캐시와 임시 산출물
+
+## 운영 전 확인사항
+
+- 이 앱의 결과는 부당광고 가능성 검토를 돕는 참고자료이며 법적 최종 판단이
+  아니다.
+- 실제 Vector Store가 올바른 자료와 버전을 가리키는지 확인한다.
+- 제품 마스터의 행 수·SHA-256·SQLite 무결성검사 결과를 확인한다.
+- OCR 원문과 담당자 수정문을 구분해 보존하고, 수정문이 분석에 사용됐는지
+  확인한다.
+- 입력 원문에서 확인되지 않는 문제표현과 비활성 Rule은 위험도 집계에서
+  제외되는지 확인한다.
+- API 키, 인증정보, 실제 광고 원문과 내부자료가 Git·로그·다운로드 예제에
+  포함되지 않았는지 확인한다.
+- 배포 전 전체 회귀시험을 통과시키고 Streamlit Secrets를 운영 환경에서
+  별도로 설정한다.
