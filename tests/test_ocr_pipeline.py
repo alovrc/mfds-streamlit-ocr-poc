@@ -4,6 +4,7 @@ from PIL import Image
 
 from ocr_pipeline import (
     OCR_STATUSES,
+    _paddle_result_text,
     analysis_text,
     collect_and_ocr,
     merge_capture_text,
@@ -23,6 +24,12 @@ def test_prepare_image_converts_and_enlarges_small_input() -> None:
     assert prepared.mode == "L"
     assert prepared.width == 1200
     assert prepared.height == 600
+
+
+def test_paddle_result_text_uses_text_only_and_discards_confidence() -> None:
+    assert _paddle_result_text(
+        {"rec_texts": ["첫째 줄", "", "둘째 줄"], "rec_scores": [0.99, 0.01, 0.88]}
+    ) == ["첫째 줄", "둘째 줄"]
 
 
 def test_analysis_text_prefers_reviewer_text() -> None:
