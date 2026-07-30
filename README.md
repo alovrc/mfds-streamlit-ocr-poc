@@ -1,7 +1,7 @@
 # MFDS 2단계 Cloud File Search OCR 검토 PoC
 
 식품·건강기능식품 온라인 광고의 제품유형과 부당광고 가능성을 검토하는
-Streamlit PoC이다. 공개 URL 수집, 서버 내 Tesseract OCR, OpenAI Responses
+Streamlit PoC이다. 공개 URL 수집, 서버 내 PaddleOCR 한국어 OCR, OpenAI Responses
 API와 File Search를 이용한 2단계 분석, 로컬 Rule 연결, 결정론적 위험도 집계,
 화면 출력 및 Markdown·JSON 다운로드를 하나의 앱에서 수행한다.
 
@@ -14,7 +14,7 @@ API와 File Search를 이용한 2단계 분석, 로컬 Rule 연결, 결정론적
 | --- | --- |
 | OpenAI 2단계 File Search | 활성 |
 | URL 본문·이미지 수집 | 활성 |
-| 서버 내 한글·영문 Tesseract OCR | 활성 |
+| 서버 내 PaddleOCR 한국어 OCR | 활성 |
 | 건강기능식품 제품 마스터 정확조회 | 활성 |
 | 대칭적 제품유형 후보 라우팅 | 활성 |
 | 로컬 Rule 연결 및 결정론적 위험도 집계 | 활성 |
@@ -30,7 +30,7 @@ API와 File Search를 이용한 2단계 분석, 로컬 Rule 연결, 결정론적
 
 ### 1. Python 환경 구성
 
-권장 환경은 Python 3.11과 Tesseract `kor+eng` 언어팩이다.
+권장 환경은 Python 3.12와 PaddleOCR 한국어 모델이다.
 
 ```powershell
 python -m venv .venv
@@ -68,7 +68,7 @@ python -m venv .venv
 | --- | --- |
 | `streamlit_app.py` | Streamlit 화면, 입력 검증, 분석 실행과 결과 다운로드 |
 | `web_capture.py` | 공개 URL 보안검증, 본문·이미지 수집 |
-| `ocr_pipeline.py` | 이미지 중복 제거와 Tesseract OCR |
+| `ocr_pipeline.py` | 이미지 중복 제거와 PaddleOCR 한국어 OCR |
 | `product_master.py` | 건강기능식품 제품 마스터 다운로드·무결성검사·정확조회 |
 | `adapters/openai/` | OpenAI Responses API와 File Search 연동 |
 | `prompts/`, `schemas/` | 단계별 프롬프트와 Structured Outputs 스키마 |
@@ -85,7 +85,7 @@ python -m venv .venv
 ```mermaid
 flowchart TD
     A["URL 또는 직접 입력"] --> B["제목·본문·이미지 수집"]
-    B --> C["이미지 중복 제거·Tesseract OCR"]
+    B --> C["이미지 중복 제거·PaddleOCR"]
     C --> D["본문＋분석 대상 OCR 병합"]
     D --> E["공개 승인 제품 마스터 정확조회"]
     E --> F["1단계 FS01 제품유형·공전 검색"]
@@ -131,7 +131,8 @@ URL을 사용하면 앱이 공개 `http`·`https` 페이지의 제목, 본문과
 
 ### OCR 정책
 
-- Streamlit 서버에서 Tesseract `kor+eng`를 실행한다.
+- Streamlit 서버에서 PaddleOCR 한국어 모델을 CPU로 실행한다.
+- PP-OCRv5 한국어 인식 모델을 사용하며, OCR confidence는 저장·표시·판정에 사용하지 않는다.
 - OpenAI OCR 또는 외부 OCR API는 호출하지 않는다.
 - 한 페이지에서 최대 20개 이미지를 처리한다.
 - URL·SHA-256 기준 중복 이미지를 제거한다.
@@ -255,7 +256,7 @@ Markdown 보고서에 표시하지 않는다. 실제 공식근거가 검색된 �
 | 제품유형 불명확으로 2단계 중단 | 1회 |
 | 일반식품 또는 건강기능식품으로 라우팅 | 2회 |
 | 로컬 Rule 연결 | 추가 호출 0회 |
-| Tesseract OCR | OpenAI 호출 0회 |
+| PaddleOCR | OpenAI 호출 0회 |
 
 정상 경로의 2회는 `FS01` 제품유형 검색 1회와 `FS11` 또는 `FS21` 위반 검토
 1회이다. 다제품 입력은 1단계 1회에 라우팅된 제품별 2단계 호출이 추가된다.
@@ -309,7 +310,7 @@ Vector Store ID가 없거나 현재 OpenAI 프로젝트에서 유효하지 않�
 
 ## 로컬 실행
 
-권장 Python 버전은 Streamlit 배포와 동일한 3.11이다.
+권장 Python 버전은 Streamlit 배포와 동일한 3.12이다.
 
 ```powershell
 python -m venv .venv
@@ -317,14 +318,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
 ```
 
-Windows 로컬 OCR 실행에는 Tesseract와 `kor`, `eng` 언어팩이 필요하다.
-Streamlit Community Cloud는 `packages.txt`로 다음 시스템 패키지를 설치한다.
-
-```text
-tesseract-ocr
-tesseract-ocr-kor
-tesseract-ocr-eng
-```
+PaddleOCR와 PaddlePaddle은 `requirements.txt`로 설치하며, 별도 Tesseract 실행파일이나 언어팩은 필요하지 않다. 첫 OCR 실행 시 한국어 모델을 내려받아 임시 캐시에 유지한다.
 
 로컬 환경변수로 제품 마스터와 OpenAI 설정을 재정의할 수 있다.
 
