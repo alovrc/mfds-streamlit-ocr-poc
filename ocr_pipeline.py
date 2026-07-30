@@ -1,13 +1,17 @@
-"""Local Tesseract OCR orchestration for the Streamlit OCR PoC."""
+"""Local PaddleOCR orchestration for the Streamlit OCR PoC."""
 
 from __future__ import annotations
 
 import hashlib
 import io
+import os
 import re
+import tempfile
 import unicodedata
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from functools import lru_cache
+from threading import Lock
 from typing import Any
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -22,7 +26,9 @@ OCR_STATUSES = {
     "IMAGE_FETCH_FAILED",
 }
 MAX_IMAGES_PER_PAGE = 20
-OCR_TIMEOUT_SECONDS = 20
+PADDLE_OCR_CACHE_DIR = os.path.join(tempfile.gettempdir(), "mfds-paddleocr")
+PADDLE_OCR_ENGINE = "PADDLEOCR_KOREAN_PP-OCRV5"
+_PADDLE_OCR_LOCK = Lock()
 
 
 _OCR_ALLOWED_CHARACTERS = re.compile(
@@ -49,18 +55,48 @@ def prepare_image(image_bytes: bytes) -> Image.Image:
     return ImageOps.autocontrast(image)
 
 
-def tesseract_ocr(image_bytes: bytes) -> str:
-    """Run Korean and English Tesseract OCR inside the Streamlit server."""
+@lru_cache(maxsize=1)
+def _paddle_ocr_engine():
+    """Load one CPU PaddleOCR Korean model per Streamlit process."""
 
-    import pytesseract
+    # PaddleOCR/PaddleX uses a home-directory cache by default. Streamlit
+    # containers may expose a read-only home path, so keep model files in a
+    # writable temporary cache instead.
+    os.environ.setdefault("PADDLE_PDX_CACHE_HOME", PADDLE_OCR_CACHE_DIR)
+    try:
+        from paddleocr import PaddleOCR
+    except ImportError as error:
+        raise RuntimeError("PADDLE_OCR_NOT_INSTALLED") from error
 
-    image = prepare_image(image_bytes)
-    return pytesseract.image_to_string(
-        image,
-        lang="kor+eng",
-        config="--oem 1 --psm 6",
-        timeout=OCR_TIMEOUT_SECONDS,
-    ).strip()
+    return PaddleOCR(
+        lang="korean",
+        use_doc_orientation_classify=False,
+        use_doc_unwarping=False,
+        use_textline_orientation=False,
+        text_det_limit_side_len=1920,
+    )
+
+
+def _paddle_result_text(result: Mapping[str, Any] | Any) -> list[str]:
+    """Extract ordered recognition strings while intentionally discarding scores."""
+
+    values = result.get("rec_texts", []) if isinstance(result, Mapping) else []
+    return [str(value).strip() for value in values if str(value).strip()]
+
+
+def paddle_ocr(image_bytes: bytes) -> str:
+    """Run PaddleOCR Korean text detection and recognition on one image."""
+
+    import numpy as np
+
+    image = prepare_image(image_bytes).convert("RGB")
+    image_array = np.asarray(image)
+    with _PADDLE_OCR_LOCK:
+        results = list(_paddle_ocr_engine().predict(image_array))
+    lines: list[str] = []
+    for result in results:
+        lines.extend(_paddle_result_text(result))
+    return "\n".join(lines)
 
 
 def trim_ocr_text(text: str) -> str:
@@ -133,7 +169,7 @@ def collect_and_ocr(
     *,
     page_collector: PageCollector = collect_page,
     image_fetcher: ImageFetcher = fetch_image,
-    ocr_function: OcrFunction = tesseract_ocr,
+    ocr_function: OcrFunction = paddle_ocr,
     max_images: int = MAX_IMAGES_PER_PAGE,
 ) -> dict[str, Any]:
     """Collect a public page and OCR a bounded, deduplicated image set."""
@@ -153,6 +189,7 @@ def collect_and_ocr(
                 {
                     "source_id": source_id,
                     "image_url": image_url,
+                    "ocr_engine": PADDLE_OCR_ENGINE,
                     "ocr_text": "",
                     "reviewed_text": None,
                     "ocr_status": "IMAGE_FETCH_FAILED",
@@ -175,6 +212,7 @@ def collect_and_ocr(
                 {
                     "source_id": source_id,
                     "image_url": final_url,
+                    "ocr_engine": PADDLE_OCR_ENGINE,
                     "ocr_text": "",
                     "reviewed_text": None,
                     "ocr_status": "FAILED",
@@ -190,6 +228,7 @@ def collect_and_ocr(
             {
                 "source_id": source_id,
                 "image_url": final_url,
+                "ocr_engine": PADDLE_OCR_ENGINE,
                 "ocr_text": text,
                 "reviewed_text": None,
                 "ocr_status": status,
