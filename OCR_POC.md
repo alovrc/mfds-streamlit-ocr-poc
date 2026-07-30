@@ -1,4 +1,4 @@
-# Streamlit 서버 내 Tesseract OCR 시험판
+# Streamlit 서버 내 PaddleOCR 시험판
 
 이 브랜치는 운영 `main`과 Streamlit 운영 앱을 변경하지 않고 URL 수집과
 한글 OCR 가능성을 시험하기 위한 개발본이다.
@@ -11,7 +11,7 @@
 - 내부·사설·예약 IP, 비표준 포트, 사용자정보 포함 URL 차단
 - HTML 2MB, 이미지 10MB, 이미지 20개, 리다이렉트 5회 제한
 - 이미지 SHA-256 중복 제거
-- Streamlit 서버의 Tesseract `kor+eng` OCR
+- Streamlit 서버의 PaddleOCR 한국어 OCR
 - OCR 원문과 담당자 수정문구 분리 보존
 - 본문과 분석 대상 OCR 문구의 출처표시 병합
 - 기존 OpenAI 1·2단계 분석 입력으로 전달
@@ -21,17 +21,12 @@ API 호출 수는 0회다.
 
 ## Cloud 패키지
 
-Streamlit Community Cloud는 `packages.txt`에서 다음 Debian 패키지를
-설치한다.
+PaddleOCR와 CPU PaddlePaddle은 `requirements.txt`로 설치한다. 별도의
+Tesseract 실행파일이나 운영체제 언어팩은 필요하지 않다. 첫 OCR 실행 시
+한국어 모델을 내려받아 Streamlit 프로세스의 임시 캐시에 재사용한다.
 
-```text
-tesseract-ocr
-tesseract-ocr-kor
-tesseract-ocr-eng
-```
-
-Python 패키지는 `requirements.txt`의 `pytesseract`, `Pillow`, `httpx`,
-`beautifulsoup4`를 사용한다.
+Python 3.12를 `runtime.txt`로 고정하며, Python 패키지는
+`paddlepaddle`, `paddleocr`, `Pillow`, `httpx`, `beautifulsoup4`를 사용한다.
 
 ## OCR 상태
 
@@ -52,8 +47,8 @@ python -m pip install -r requirements.txt
 python -m streamlit run streamlit_app.py
 ```
 
-Windows 로컬 실행에는 Tesseract와 한글·영문 언어팩을 별도로 설치해야 한다.
-Streamlit Community Cloud에서는 `packages.txt`가 이를 담당한다.
+Windows와 Streamlit Community Cloud 모두 `requirements.txt` 설치만으로
+실행한다. 최초 OCR 요청은 모델 다운로드 때문에 평소보다 오래 걸릴 수 있다.
 
 ## 검증
 
@@ -64,7 +59,7 @@ python -m pytest -q
 
 운영 반영 전에는 별도 시험 앱으로 배포해 다음을 확인해야 한다.
 
-1. 한글 Tesseract 언어팩 로딩
+1. PaddleOCR 한국어 모델 초기화와 캐시 재사용
 2. 네이버 블로그 활성 게시물의 본문·이미지 수집
 3. 이미지별 OCR 원문 및 실패상태 표시
 4. 담당자 수정문구 재병합
