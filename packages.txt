@@ -1,1 +1,0 @@
-# PaddleOCR is installed through requirements.txt; no OS-level OCR language pack is required.
