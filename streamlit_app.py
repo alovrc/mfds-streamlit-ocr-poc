@@ -441,7 +441,7 @@ def _render_ocr_capture_editor(capture: dict[str, Any]) -> None:
 def render_input() -> dict[str, Any]:
     st.subheader("광고 입력")
     st.info(
-        "OCR 시험 기능입니다. Tesseract가 Streamlit 서버에서 직접 실행됩니다."
+        "OCR 시험 기능입니다. PaddleOCR 한국어 모델이 Streamlit 서버에서 직접 실행됩니다."
     )
     record_id = st.text_input(
         "레코드 ID",
@@ -460,7 +460,7 @@ def render_input() -> dict[str, Any]:
         use_container_width=True,
     ):
         _reset_ocr_capture()
-        with st.spinner("본문과 이미지를 수집하고 Tesseract OCR을 실행합니다."):
+        with st.spinner("본문과 이미지를 수집하고 PaddleOCR을 실행합니다."):
             try:
                 capture = collect_and_ocr(source_url)
             except CaptureError as error:
