@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import time
 import unicodedata
 import urllib.request
 from dataclasses import asdict, dataclass
@@ -25,6 +26,9 @@ PRODUCT_MASTER_RELEASE_URL = (
 # Filled from the validated release asset by scripts/build_product_master.py.
 PRODUCT_MASTER_SHA256 = "7cd71cd2b583b70dbd8cca204db02c81880ebc893960a7aa1220d9a7866729b4"
 MAX_DOWNLOAD_BYTES = 128 * 1024 * 1024
+PRODUCT_MASTER_DOWNLOAD_TIMEOUT_SECONDS = 180
+PRODUCT_MASTER_DOWNLOAD_RETRIES = 3
+PRODUCT_MASTER_DOWNLOAD_RETRY_DELAY_SECONDS = 2
 
 
 @dataclass(frozen=True)
@@ -92,22 +96,38 @@ def _validate_database(path: Path, expected_sha256: str) -> None:
 def _download_database(destination: Path, url: str) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_suffix(".download")
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "mfds-streamlit-product-master/1.0"},
-    )
-    total = 0
-    try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            with temporary.open("wb") as output:
-                while block := response.read(1024 * 1024):
-                    total += len(block)
-                    if total > MAX_DOWNLOAD_BYTES:
-                        raise RuntimeError("PRODUCT_MASTER_DOWNLOAD_TOO_LARGE")
-                    output.write(block)
-        temporary.replace(destination)
-    finally:
+    last_error: Exception | None = None
+
+    for attempt in range(1, PRODUCT_MASTER_DOWNLOAD_RETRIES + 1):
         temporary.unlink(missing_ok=True)
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "mfds-streamlit-product-master/1.0"},
+        )
+        total = 0
+        try:
+            with urllib.request.urlopen(
+                request,
+                timeout=PRODUCT_MASTER_DOWNLOAD_TIMEOUT_SECONDS,
+            ) as response:
+                with temporary.open("wb") as output:
+                    while block := response.read(1024 * 1024):
+                        total += len(block)
+                        if total > MAX_DOWNLOAD_BYTES:
+                            raise RuntimeError("PRODUCT_MASTER_DOWNLOAD_TOO_LARGE")
+                        output.write(block)
+            temporary.replace(destination)
+            return
+        except Exception as error:
+            last_error = error
+            temporary.unlink(missing_ok=True)
+            if attempt < PRODUCT_MASTER_DOWNLOAD_RETRIES:
+                time.sleep(PRODUCT_MASTER_DOWNLOAD_RETRY_DELAY_SECONDS)
+
+    raise RuntimeError(
+        "PRODUCT_MASTER_DOWNLOAD_FAILED:"
+        f"{type(last_error).__name__ if last_error else 'UnknownError'}"
+    ) from last_error
 
 
 def resolve_product_master() -> Path:
