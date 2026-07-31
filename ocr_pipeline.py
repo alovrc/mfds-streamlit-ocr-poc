@@ -26,6 +26,7 @@ OCR_STATUSES = {
     "IMAGE_FETCH_FAILED",
 }
 MAX_IMAGES_PER_PAGE = 20
+MAX_IMAGE_SIDE = 1920
 PADDLE_OCR_CACHE_DIR = os.path.join(tempfile.gettempdir(), "mfds-paddleocr")
 PADDLE_OCR_ENGINE = "PADDLEOCR_KOREAN_PP-OCRV5"
 _PADDLE_OCR_LOCK = Lock()
@@ -46,7 +47,14 @@ def prepare_image(image_bytes: bytes) -> Image.Image:
 
     image = Image.open(io.BytesIO(image_bytes))
     image = ImageOps.exif_transpose(image).convert("L")
-    if image.width < 1600:
+    longest_side = max(image.width, image.height)
+    if longest_side > MAX_IMAGE_SIDE:
+        scale = MAX_IMAGE_SIDE / longest_side
+        image = image.resize(
+            (round(image.width * scale), round(image.height * scale)),
+            Image.Resampling.LANCZOS,
+        )
+    elif image.width < 1600:
         scale = min(3.0, 1600 / max(image.width, 1))
         image = image.resize(
             (int(image.width * scale), int(image.height * scale)),
@@ -70,6 +78,8 @@ def _paddle_ocr_engine():
 
     return PaddleOCR(
         lang="korean",
+        text_detection_model_name="PP-OCRv5_mobile_det",
+        text_recognition_model_name="korean_PP-OCRv5_mobile_rec",
         device="cpu",
         enable_mkldnn=False,
         use_doc_orientation_classify=False,
