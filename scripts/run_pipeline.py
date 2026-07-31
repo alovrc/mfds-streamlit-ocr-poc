@@ -15,7 +15,11 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT))
 
 from adapters.common import offline
-from product_master import ProductMasterLookup, lookup_product
+from product_master import (
+    ProductMasterLookup,
+    lookup_product,
+    normalize_product_name,
+)
 from rule_catalog import attach_local_rules
 from risk_aggregation import (
     apply_deterministic_review_scores,
@@ -100,8 +104,10 @@ def apply_product_master_lookup(
         (
             item
             for item in products
-            if str(item.get("product_name") or "").strip()
-            == match.product_name
+            if normalize_product_name(
+                str(item.get("product_name") or "")
+            )
+            == normalize_product_name(match.product_name)
         ),
         products[0] if len(products) == 1 else None,
     )
@@ -150,6 +156,23 @@ def apply_product_master_lookup(
     )
 
 
+def apply_model_product_master_lookups(output: dict[str, Any]) -> None:
+    """Exact-lookup each product name extracted by the stage-1 model.
+
+    This fallback is used only when the input did not supply a product name
+    and stage 1 has identified one or more product names from the ad.
+    """
+
+    seen_names: set[str] = set()
+    for product in output.get("products", []):
+        product_name = str(product.get("product_name") or "").strip()
+        normalized_name = normalize_product_name(product_name)
+        if not normalized_name or normalized_name in seen_names:
+            continue
+        seen_names.add(normalized_name)
+        apply_product_master_lookup(output, lookup_product(product_name))
+
+
 def stage1(provider: str, source: dict[str, Any]) -> dict[str, Any]:
     validate_schema(source, "stage1_input.schema.json")
     master_lookup = lookup_product(source.get("product_name"))
@@ -168,7 +191,10 @@ def stage1(provider: str, source: dict[str, Any]) -> dict[str, Any]:
         result.data["file_search"] = result.tracking(
             f"{source['title']} {source['body_text']}"
         )
-    apply_product_master_lookup(result.data, master_lookup)
+    if master_lookup.status == "NOT_REQUESTED":
+        apply_model_product_master_lookups(result.data)
+    else:
+        apply_product_master_lookup(result.data, master_lookup)
     normalize_stage1_product_type_confidence(result.data)
     validate_schema(result.data, "stage1_output.schema.json")
     validate_stage1_links(result.data)
