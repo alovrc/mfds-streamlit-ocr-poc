@@ -30,6 +30,25 @@ from web_capture import CaptureError
 
 STORE_ALIASES = ("FS01_PRODUCT_GATE", "FS11_FOOD_REVIEW", "FS21_HFF_REVIEW")
 HIDDEN_UNCERTAINTY_CODES = {"SEARCH_NO_OFFICIAL_EVIDENCE"}
+OPENAI_MODEL_OPTIONS = (
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+)
+
+
+def render_openai_model_selector() -> str:
+    """Let the operator choose the OpenAI model without editing source code."""
+
+    configured = str(os.getenv("OPENAI_MODEL", "")).strip()
+    default_model = configured if configured in OPENAI_MODEL_OPTIONS else OPENAI_MODEL_OPTIONS[0]
+    return st.sidebar.selectbox(
+        "OpenAI 모델",
+        OPENAI_MODEL_OPTIONS,
+        index=OPENAI_MODEL_OPTIONS.index(default_model),
+        key="openai_model_selector",
+        help="다음 OpenAI 실행부터 선택한 모델이 적용됩니다.",
+    )
 
 
 def display_uncertainty_codes(codes: list[str]) -> str:
@@ -187,7 +206,11 @@ def render_review_table(rows: list[dict[str, Any]]) -> None:
     st.markdown("\n".join(lines))
 
 
-def run_provider(provider: str, source: dict[str, Any]) -> None:
+def run_provider(
+    provider: str,
+    source: dict[str, Any],
+    model: str,
+) -> None:
     if not source["record_id"]:
         st.error("레코드 ID를 입력하세요.")
         return
@@ -195,7 +218,10 @@ def run_provider(provider: str, source: dict[str, Any]) -> None:
         st.error("게시물 제목이나 본문 중 하나 이상을 입력하세요.")
         return
 
-    with st.spinner(f"{provider} 1·2단계를 실행하고 있습니다."):
+    os.environ["OPENAI_MODEL"] = model
+    with st.spinner(
+        f"{provider} 1·2단계를 실행하고 있습니다. ({model})"
+    ):
         try:
             output = run(provider, source)
         except Exception as error:
@@ -235,7 +261,10 @@ def _load_stage1_jsonl(uploaded_file: Any) -> list[dict[str, Any]]:
     return records
 
 
-def render_stage1_batch_verification(openai_configured: bool) -> None:
+def render_stage1_batch_verification(
+    openai_configured: bool,
+    model: str,
+) -> None:
     """Run fixed JSONL inputs through FS01 only; never run capture or OCR."""
 
     with st.expander("식약처 1단계 일괄 검증", expanded=False):
@@ -270,6 +299,7 @@ def render_stage1_batch_verification(openai_configured: bool) -> None:
         ):
             return
 
+        os.environ["OPENAI_MODEL"] = model
         results: list[dict[str, Any]] = []
         rows: list[dict[str, Any]] = []
         progress = st.progress(0, text="FS01 일괄 검증 준비 중")
@@ -826,6 +856,7 @@ def main() -> None:
     require_password()
     configure_from_secrets()
     openai_configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
+    selected_model = render_openai_model_selector()
     st.title("MFDS 2단계 Cloud File Search OCR 시험")
     st.caption(
         "1단계 제품·경로 판정 → 제품별 2단계 검색 → 담당자 확인"
@@ -850,7 +881,7 @@ def main() -> None:
     st.session_state.setdefault("sources", {})
     st.session_state.setdefault("failures", {})
     source = render_input()
-    render_stage1_batch_verification(openai_configured)
+    render_stage1_batch_verification(openai_configured, selected_model)
     st.divider()
     offline_col, openai_col, gemini_col, clear_col = st.columns(4)
     offline_col.button(
@@ -866,7 +897,7 @@ def main() -> None:
         help=None if openai_configured else "올바른 OpenAI 프로젝트 키를 Secrets에 설정해야 합니다.",
         use_container_width=True,
     ):
-        run_provider("openai", source)
+        run_provider("openai", source, selected_model)
     gemini_col.button(
         "Gemini 중단됨",
         disabled=True,
