@@ -9,7 +9,10 @@ from product_master import (
     lookup_product,
     normalize_product_name,
 )
-from scripts.run_pipeline import apply_product_master_lookup
+from scripts.run_pipeline import (
+    apply_model_product_master_lookups,
+    apply_product_master_lookup,
+)
 
 
 def test_normalize_product_name_is_exact_but_separator_tolerant() -> None:
@@ -128,3 +131,62 @@ def test_ambiguous_name_does_not_force_hff() -> None:
 
     assert output["products"][0]["product_type"] == "FOOD_FALLBACK"
     assert "CONFLICTING_PRODUCT_TYPE_EVIDENCE" in output["uncertainty_codes"]
+
+
+
+def test_model_extracted_product_name_is_used_for_master_lookup(
+    monkeypatch,
+) -> None:
+    output = {
+        "record_product_type": "FOOD_FALLBACK",
+        "products": [
+            {
+                "product_index": 0,
+                "product_name": "프리미엄-덴티시브",
+                "product_type": "FOOD_FALLBACK",
+                "product_subtype": "UNKNOWN_FOOD",
+                "confidence": 0.55,
+                "food_confidence": 0.55,
+                "hff_confidence": 0.48,
+                "analysis_target": True,
+                "evidence_ids": [],
+                "uncertainty_codes": [],
+            }
+        ],
+        "routes": [
+            {
+                "product_index": 0,
+                "stage2_route": "FOOD_REVIEW",
+                "store_alias": "FS11_FOOD_REVIEW",
+            }
+        ],
+        "uncertainty_codes": [],
+        "requires_human_review": True,
+        "short_reason": "모델 분류",
+    }
+    calls: list[str] = []
+
+    def fake_lookup(query: str | None) -> ProductMasterLookup:
+        calls.append(str(query))
+        return ProductMasterLookup(
+            query=str(query),
+            status="EXACT_UNIQUE",
+            matches=(
+                ProductMasterMatch(
+                    record_id=42,
+                    product_name="프리미엄 덴티시브",
+                    business_name="(주)비오팜",
+                    product_type_name="프로폴리스추출물",
+                    functionality="항산화",
+                ),
+            ),
+        )
+
+    monkeypatch.setattr("scripts.run_pipeline.lookup_product", fake_lookup)
+
+    apply_model_product_master_lookups(output)
+
+    assert calls == ["프리미엄-덴티시브"]
+    assert output["products"][0]["product_name"] == "프리미엄 덴티시브"
+    assert output["products"][0]["hff_confidence"] == 1.0
+    assert output["routes"][0]["store_alias"] == "FS21_HFF_REVIEW"
