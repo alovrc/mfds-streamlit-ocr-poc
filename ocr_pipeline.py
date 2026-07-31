@@ -66,7 +66,7 @@ def _paddle_ocr_engine():
     try:
         from paddleocr import PaddleOCR
     except ImportError as error:
-        raise RuntimeError("PADDLE_OCR_NOT_INSTALLED") from error
+        raise RuntimeError(f"PADDLE_OCR_NOT_INSTALLED: {error}") from error
 
     return PaddleOCR(
         lang="korean",
