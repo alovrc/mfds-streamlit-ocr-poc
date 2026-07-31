@@ -217,6 +217,7 @@ def collect_and_ocr(
                     "reviewed_text": None,
                     "ocr_status": "FAILED",
                     "error_code": type(error).__name__.upper(),
+                    "error_detail": str(error)[:500],
                     "included_in_analysis": False,
                     "_image_bytes": image_bytes,
                 }
