@@ -394,7 +394,11 @@ def _render_ocr_capture_editor(capture: dict[str, Any]) -> None:
             else:
                 st.caption(record["image_url"])
             if record["error_code"]:
-                st.warning(f"처리 오류: {record['error_code']}")
+                detail = str(record.get("error_detail") or "").strip()
+                message = f"처리 오류: {record['error_code']}"
+                if detail:
+                    message += f" · {detail}"
+                st.warning(message)
 
             reviewed_key = f"ocr_reviewed_{record['source_id']}"
             included_key = f"ocr_included_{record['source_id']}"
