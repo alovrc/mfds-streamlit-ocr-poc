@@ -3,6 +3,15 @@ import pytest
 pytest.importorskip("streamlit")
 
 from batch_streamlit_app import _preview_rows
+from streamlit_app import OPENAI_MODEL_OPTIONS
+
+
+def test_openai_model_options_put_luna_first() -> None:
+    assert OPENAI_MODEL_OPTIONS == (
+        "gpt-5.6-luna",
+        "gpt-5.6-terra",
+        "gpt-5.6-sol",
+    )
 
 
 def test_batch_preview_displays_all_input_columns() -> None:

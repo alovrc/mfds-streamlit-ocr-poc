@@ -31,9 +31,9 @@ from web_capture import CaptureError
 STORE_ALIASES = ("FS01_PRODUCT_GATE", "FS11_FOOD_REVIEW", "FS21_HFF_REVIEW")
 HIDDEN_UNCERTAINTY_CODES = {"SEARCH_NO_OFFICIAL_EVIDENCE"}
 OPENAI_MODEL_OPTIONS = (
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
     "gpt-5.6-luna",
+    "gpt-5.6-terra",
+    "gpt-5.6-sol",
 )
 
 
