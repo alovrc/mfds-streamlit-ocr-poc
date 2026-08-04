@@ -33,6 +33,7 @@
 - `food_confidence >= 0.50`이고 `food_confidence > hff_confidence`이며 두 점수 차이가 0.05보다 크고 상충 근거가 없으면 `FOOD` 후보로 판정한다.
 - `hff_confidence >= 0.50`이고 `hff_confidence > food_confidence`이며 두 점수 차이가 0.05보다 크고 상충 근거가 없으면 `HEALTH_FUNCTIONAL_FOOD` 후보로 판정한다.
 - 두 점수가 모두 0.50 미만이거나 차이가 0.05 이하이거나 상충 근거가 있으면 `UNCERTAIN`, `requires_human_review=true`로 처리한다.
+- 다만 원문에 혈당·혈압·콜레스테롤·당뇨·혈관·치료·예방·개선·완화·억제·회복·약품 등 건강효능 또는 질병 관련 표현이 실제로 있으면, 제품유형이 불확실해도 `FOOD_FALLBACK`과 `FOOD_REVIEW` 경로로 2단계 검토를 계속한다. 이는 법적 확정이 아니라 미탐 방지용 후보 라우팅이며 `requires_human_review=true`를 유지한다.
 - 점수 기반 후보 판정은 제품 마스터 정확일치와 같은 확정 근거가 아니므로 담당자 확인을 유지한다.
 - 제품유형과 광고 위반유형을 혼동하지 않는다.
 - 특수영양식품과 특수의료용도식품의 허용 문맥을 보존한다.

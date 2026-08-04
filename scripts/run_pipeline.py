@@ -40,6 +40,29 @@ from validators.core import (
 PRODUCT_TYPE_CANDIDATE_THRESHOLD = 0.50
 PRODUCT_TYPE_TIE_MARGIN = 0.05
 FOOD_REVIEW_THRESHOLD = PRODUCT_TYPE_CANDIDATE_THRESHOLD
+RECALL_REVIEW_UNCERTAINTY_CODE = "PRODUCT_TYPE_UNCERTAIN_REVIEW"
+RECALL_REVIEW_KEYWORDS = (
+    "혈당",
+    "혈압",
+    "콜레스테롤",
+    "당뇨",
+    "혈관",
+    "심혈관",
+    "콩팥",
+    "신장",
+    "항암",
+    "종양",
+    "염증",
+    "아토피",
+    "치료",
+    "예방",
+    "개선",
+    "완화",
+    "억제",
+    "회복",
+    "혈압약",
+    "의약품",
+)
 
 
 def sanitize_unicode_surrogates(value: Any) -> Any:
@@ -195,7 +218,7 @@ def stage1(provider: str, source: dict[str, Any]) -> dict[str, Any]:
         apply_model_product_master_lookups(result.data)
     else:
         apply_product_master_lookup(result.data, master_lookup)
-    normalize_stage1_product_type_confidence(result.data)
+    normalize_stage1_product_type_confidence(result.data, source)
     validate_schema(result.data, "stage1_output.schema.json")
     validate_stage1_links(result.data)
     return result.data
@@ -203,13 +226,15 @@ def stage1(provider: str, source: dict[str, Any]) -> dict[str, Any]:
 
 def normalize_stage1_product_type_confidence(
     output: dict[str, Any],
+    source: dict[str, Any] | None = None,
 ) -> None:
-    """Route non-master candidates symmetrically from confidence scores.
+    """Route non-master candidates with a recall-preserving review fallback.
 
     A unique exact product-master match remains authoritative. Other products
     are routed only when one score is at least 0.50 and leads the other by
-    more than the 0.05 tie margin. Low or near-tied scores remain uncertain
-    and are not sent to a type-specific stage-2 store automatically.
+    more than the 0.05 tie margin. When the ad text contains a strong
+    health-effect or disease-related signal, low or near-tied scores use
+    FOOD_FALLBACK and continue to stage 2 for human-reviewed recall.
     """
 
     route_by_index = {
@@ -220,6 +245,13 @@ def normalize_stage1_product_type_confidence(
     decisions: list[str] = []
     needs_human_review = False
     record_uncertainty = output.setdefault("uncertainty_codes", [])
+    source_text = " ".join(
+        str(source.get(field) or "")
+        for field in ("title", "body_text")
+    ) if source else ""
+    recall_review_signal = any(
+        keyword in source_text for keyword in RECALL_REVIEW_KEYWORDS
+    )
 
     for product in output.get("products", []):
         product_index = product.get("product_index")
@@ -258,7 +290,12 @@ def normalize_stage1_product_type_confidence(
                 or score_gap <= PRODUCT_TYPE_TIE_MARGIN
             )
             if both_below or conflicting:
-                decision = "UNCERTAIN"
+                decision = (
+                    "FOOD_FALLBACK"
+                    if recall_review_signal
+                    and "MULTI_PRODUCT" not in uncertainty_codes
+                    else "UNCERTAIN"
+                )
             elif (
                 food_confidence >= PRODUCT_TYPE_CANDIDATE_THRESHOLD
                 and food_confidence > hff_confidence
@@ -295,6 +332,18 @@ def normalize_stage1_product_type_confidence(
             route["store_alias"] = "FS21_HFF_REVIEW"
             decisions.append(
                 f"제품 {product_index}: hff_confidence 0.50 이상 건기식 후보"
+            )
+        elif decision == "FOOD_FALLBACK":
+            needs_human_review = True
+            product["product_subtype"] = "UNKNOWN_FOOD"
+            route["stage2_route"] = "FOOD_REVIEW"
+            route["store_alias"] = "FS11_FOOD_REVIEW"
+            if RECALL_REVIEW_UNCERTAINTY_CODE not in uncertainty_codes:
+                uncertainty_codes.append(RECALL_REVIEW_UNCERTAINTY_CODE)
+            if RECALL_REVIEW_UNCERTAINTY_CODE not in record_uncertainty:
+                record_uncertainty.append(RECALL_REVIEW_UNCERTAINTY_CODE)
+            decisions.append(
+                f"제품 {product_index}: 유형 불확실하지만 건강효능 표현으로 2단계 우선 검토"
             )
         else:
             needs_human_review = True
@@ -351,10 +400,13 @@ def normalize_stage1_product_type_confidence(
         output["short_reason"] = f"{reason}; {suffix}" if reason else suffix
 
 
-def normalize_stage1_food_confidence(output: dict[str, Any]) -> None:
+def normalize_stage1_food_confidence(
+    output: dict[str, Any],
+    source: dict[str, Any] | None = None,
+) -> None:
     """Backward-compatible alias for the symmetric routing normalizer."""
 
-    normalize_stage1_product_type_confidence(output)
+    normalize_stage1_product_type_confidence(output, source)
 
 
 def make_stage2_input(
