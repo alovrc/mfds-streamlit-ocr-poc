@@ -3,7 +3,30 @@ from __future__ import annotations
 import io
 import zipfile
 
-from batch_input import parse_batch_bytes, parse_batch_text
+import pytest
+
+from batch_input import MAX_BATCH_SIZE, normalize_batch_rows, parse_batch_bytes, parse_batch_text
+
+
+def test_batch_size_allows_100_rows() -> None:
+    rows = [
+        {"record_id": f"A-{index:03d}", "title": f"title-{index}"}
+        for index in range(1, MAX_BATCH_SIZE + 1)
+    ]
+
+    normalized = normalize_batch_rows(rows)
+
+    assert len(normalized) == 100
+
+
+def test_batch_size_rejects_more_than_100_rows() -> None:
+    rows = [
+        {"record_id": f"A-{index:03d}", "title": f"title-{index}"}
+        for index in range(1, MAX_BATCH_SIZE + 2)
+    ]
+
+    with pytest.raises(ValueError, match="100"):
+        normalize_batch_rows(rows)
 
 
 def test_parse_csv_supports_korean_source_headers() -> None:

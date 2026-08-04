@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-MAX_BATCH_SIZE = 50
+MAX_BATCH_SIZE = 100
 
 FIELD_ALIASES = {
     "record_id": ("record_id", "id", "레코드 ID", "레코드ID", "식별자"),
