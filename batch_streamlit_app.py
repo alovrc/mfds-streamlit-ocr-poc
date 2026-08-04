@@ -129,8 +129,10 @@ def _preview_rows(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "순번": index,
             "레코드 ID": source["record_id"],
             "제목": source["title"],
+            "본문": source["body_text"],
             "원문 URL": source["source_url"],
-            "본문 입력": bool(source["body_text"]),
+            "사이트명": source["platform"],
+            "제품명": source["product_name"],
         }
         for index, source in enumerate(sources, start=1)
     ]
