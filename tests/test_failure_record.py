@@ -29,3 +29,18 @@ def test_quota_failure_is_classified() -> None:
     )
 
     assert failure["error_code"] == "PROVIDER_QUOTA_EXCEEDED"
+
+
+def test_schema_failure_is_not_misclassified_by_allowed_code_text() -> None:
+    failure = failure_record(
+        {"record_id": "T3"},
+        "openai",
+        "stage1",
+        RuntimeError(
+            "JSON_SCHEMA_INVALID: products/3/uncertainty_codes/1: "
+            "'PRODUCT_TYPE_UNCERTAIN_REVIEW' is not one of "
+            "['JSON_SCHEMA_INVALID', 'PROVIDER_MODEL_UNSUPPORTED']"
+        ),
+    )
+
+    assert failure["error_code"] == "JSON_SCHEMA_INVALID"

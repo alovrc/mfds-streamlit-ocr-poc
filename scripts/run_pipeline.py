@@ -783,10 +783,17 @@ def failure_record(
         ("RISK_AGGREGATION_MISMATCH", "RISK_AGGREGATION_MISMATCH"),
         ("MODEL_REFUSAL_OR_EMPTY", "MODEL_REFUSAL_OR_EMPTY"),
     ]
-    code = next(
-        (public_code for pattern, public_code in code_patterns if pattern in text),
-        "PROVIDER_RESPONSE_INVALID",
-    )
+    if re.match(r"^JSON_SCHEMA_INVALID(?:[:\s]|$)", text):
+        code = "JSON_SCHEMA_INVALID"
+    else:
+        code = next(
+            (
+                public_code
+                for pattern, public_code in code_patterns
+                if pattern in text
+            ),
+            "PROVIDER_RESPONSE_INVALID",
+        )
     safe_message = text[:1000]
     for pattern, replacement in (
         (r"sk-[A-Za-z0-9_-]+", "[REDACTED_KEY]"),
