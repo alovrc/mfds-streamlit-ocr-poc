@@ -2,6 +2,7 @@ from scripts.run_pipeline import (
     quarantine_general_health_expressions,
     quarantine_indirect_rule_candidates,
     quarantine_invalid_problem_expressions,
+    quarantine_unruled_active_candidates,
     sanitize_unicode_surrogates,
 )
 from risk_aggregation import apply_deterministic_review_scores
@@ -185,4 +186,34 @@ def test_high_risk_without_official_evidence_keeps_rule_based_score() -> None:
     assert output["violation_reviews"][1]["risk_score"] == 8
     assert output["violation_reviews"][1]["status"] == "HIGH"
     assert "SEARCH_NO_OFFICIAL_EVIDENCE" in output["uncertainty_codes"]
+    assert output["requires_human_review"] is True
+
+
+def test_unruled_active_candidate_isolated_without_batch_failure() -> None:
+    output = {
+        "violation_reviews": [
+            {
+                "violation_type": "FALSE_EXAGGERATED",
+                "status": "REVIEW",
+                "risk_score": 6,
+                "expression_ids": ["E1"],
+                "rule_ids": [],
+                "official_evidence_ids": [],
+                "case_ids": [],
+                "score_factors": [],
+                "score_reason": "candidate",
+                "uncertainty_codes": [],
+            }
+        ],
+        "uncertainty_codes": [],
+        "requires_human_review": False,
+    }
+
+    quarantine_unruled_active_candidates(output)
+
+    review = output["violation_reviews"][0]
+    assert review["risk_score"] == 0
+    assert review["status"] == "INSUFFICIENT_EVIDENCE"
+    assert "SEARCH_NO_RULE" in review["uncertainty_codes"]
+    assert "SEARCH_NO_RULE" in output["uncertainty_codes"]
     assert output["requires_human_review"] is True

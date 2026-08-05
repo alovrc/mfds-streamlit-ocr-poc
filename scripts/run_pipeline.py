@@ -588,6 +588,37 @@ def apply_input_incomplete_guardrail(
     output["requires_human_review"] = True
 
 
+def quarantine_unruled_active_candidates(output: dict[str, Any]) -> None:
+    """Isolate active candidates that have no validated local Rule ID."""
+
+    output_uncertainty = output.setdefault("uncertainty_codes", [])
+    changed = False
+    for review in output.get("violation_reviews", []):
+        if not isinstance(review, dict):
+            continue
+        score = review.get("risk_score")
+        active = (
+            review.get("status") in {"HIGH", "REVIEW", "LOW"}
+            or (type(score) is int and score > 0)
+        )
+        if not active or review.get("rule_ids"):
+            continue
+        uncertainty = review.setdefault("uncertainty_codes", [])
+        if "SEARCH_NO_RULE" not in uncertainty:
+            uncertainty.append("SEARCH_NO_RULE")
+        review["risk_score"] = 0
+        review["status"] = "INSUFFICIENT_EVIDENCE"
+        review["score_reason"] = (
+            "활성 위반 후보에 검증된 법령 Rule ID가 연결되지 않아 "
+            "해당 제품 결과만 사람 검토 대상으로 격리했습니다."
+        )
+        changed = True
+    if changed:
+        if "SEARCH_NO_RULE" not in output_uncertainty:
+            output_uncertainty.append("SEARCH_NO_RULE")
+        output["requires_human_review"] = True
+
+
 def make_stage2_input(
     source: dict[str, Any],
     stage1_output: dict[str, Any],
@@ -654,6 +685,7 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
     apply_deterministic_review_scores(result.data)
     normalize_stage2_statuses(result.data)
     apply_input_incomplete_guardrail(payload, result.data)
+    quarantine_unruled_active_candidates(result.data)
     validate_stage2(payload, result.data)
     return result.data
 
