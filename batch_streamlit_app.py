@@ -113,21 +113,21 @@ def _render_completed_downloads(worker: BatchWorker, jobs: list[dict[str, Any]])
             _json_bytes(_failure_payload(selected)),
             file_name=f"{selected.job_id}.failure.json",
             mime="application/json; charset=utf-8",
-            use_container_width=True,
+            width="stretch",
         )
         st.download_button(
             "실패 결과 Markdown 다운로드",
             _failure_markdown(selected),
             file_name=f"{selected.job_id}.failure.md",
             mime="text/markdown; charset=utf-8",
-            use_container_width=True,
+            width="stretch",
         )
         st.download_button(
             "전체 배치 결과 JSONL 다운로드",
             _batch_jsonl(worker, jobs),
             file_name="mfds_batch_results.jsonl",
             mime="application/x-ndjson; charset=utf-8",
-            use_container_width=True,
+            width="stretch",
         )
         return
     if not selected.output:
@@ -149,22 +149,53 @@ def _render_completed_downloads(worker: BatchWorker, jobs: list[dict[str, Any]])
         ),
         file_name=f"{selected.job_id}.json",
         mime="application/json; charset=utf-8",
-        use_container_width=True,
+        width="stretch",
     )
     st.download_button(
         "선택 결과 Markdown 다운로드",
         build_markdown_report(selected.output, "openai", source).encode("utf-8"),
         file_name=f"{selected.job_id}.md",
         mime="text/markdown; charset=utf-8",
-        use_container_width=True,
+        width="stretch",
     )
     st.download_button(
         "전체 배치 결과 JSONL 다운로드",
         _batch_jsonl(worker, jobs),
         file_name="mfds_batch_results.jsonl",
         mime="application/x-ndjson; charset=utf-8",
-        use_container_width=True,
+        width="stretch",
     )
+
+
+@st.fragment(run_every="2s")
+def _render_sidebar_queue_status(worker: BatchWorker) -> None:
+    jobs = worker.snapshots()
+    counts = {
+        status: sum(item["status"] == status for item in jobs)
+        for status in ("QUEUED", "RUNNING", "SUCCEEDED", "FAILED")
+    }
+    st.sidebar.divider()
+    st.sidebar.subheader("배치 진행 상태")
+    if counts["RUNNING"]:
+        st.sidebar.caption("상태: 처리 중")
+    elif counts["QUEUED"]:
+        st.sidebar.caption("상태: 대기 중")
+    elif counts["FAILED"]:
+        st.sidebar.caption("상태: 실패 확인 필요")
+    elif jobs:
+        st.sidebar.caption("상태: 완료")
+    else:
+        st.sidebar.caption("상태: 작업 없음")
+    st.sidebar.write(f"대기　**{counts['QUEUED']}**")
+    st.sidebar.write(f"진행 중　**{counts['RUNNING']}**")
+    st.sidebar.write(f"완료　**{counts['SUCCEEDED']}**")
+    st.sidebar.write(f"실패　**{counts['FAILED']}**")
+    active = next(
+        (item for item in jobs if item["status"] == "RUNNING"),
+        None,
+    )
+    if active:
+        st.sidebar.caption(f"현재 처리: {active['record_id']}")
 
 
 @st.fragment(run_every="2s")
@@ -196,7 +227,7 @@ def _render_queue_status(worker: BatchWorker) -> None:
             for item in jobs
         ],
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
 
 
@@ -250,6 +281,7 @@ def main() -> None:
         "OCR: PaddleOCR 한국어 모델 "
         + ("포함" if use_paddle_ocr else "비포함")
     )
+    _render_sidebar_queue_status(worker)
 
     uploaded = st.file_uploader(
         "배치 입력 파일",
@@ -262,7 +294,7 @@ def main() -> None:
         placeholder='record_id,title,body_text,source_url\nBATCH-001,,,https://example.com/post',
     )
     parse_col, clear_col = st.columns(2)
-    if parse_col.button("배치 입력 검증", type="secondary", use_container_width=True):
+    if parse_col.button("배치 입력 검증", type="secondary", width="stretch"):
         try:
             if uploaded:
                 sources = parse_batch_bytes(uploaded.name, uploaded.getvalue())
@@ -276,20 +308,20 @@ def main() -> None:
         else:
             st.session_state.batch_sources = sources
             st.success(f"{len(sources)}건의 배치 입력을 확인했습니다.")
-    if clear_col.button("입력 초기화", use_container_width=True):
+    if clear_col.button("입력 초기화", width="stretch"):
         st.session_state.pop("batch_sources", None)
         st.rerun()
 
     sources = st.session_state.get("batch_sources", [])
     if sources:
         st.subheader("배치 미리보기")
-        st.dataframe(_preview_rows(sources), hide_index=True, use_container_width=True)
+        st.dataframe(_preview_rows(sources), hide_index=True, width="stretch")
         if st.button(
             f"{len(sources)}건 순차 배치 실행",
             type="primary",
             disabled=not openai_configured,
             help="현재 선택한 OpenAI 모델로 FIFO 순서대로 실행합니다.",
-            use_container_width=True,
+            width="stretch",
         ):
             submitted = worker.submit_many(
                 sources,
