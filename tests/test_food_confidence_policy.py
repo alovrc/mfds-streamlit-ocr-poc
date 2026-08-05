@@ -3,6 +3,7 @@ from scripts.run_pipeline import (
     normalize_stage1_product_type_confidence,
     normalize_stage2_statuses,
 )
+from validators.core import validate_stage1_links
 
 
 def stage1_output(
@@ -14,6 +15,7 @@ def stage1_output(
 ) -> dict:
     return {
         "record_product_type": product_type,
+        "multi_product": False,
         "products": [
             {
                 "product_index": 0,
@@ -22,6 +24,7 @@ def stage1_output(
                 "confidence": 0.60,
                 "food_confidence": food_confidence,
                 "hff_confidence": hff_confidence,
+                "evidence_ids": [],
                 "uncertainty_codes": uncertainty_codes or [],
             }
         ],
@@ -130,6 +133,7 @@ def test_both_scores_below_point_five_require_human_review() -> None:
     assert output["routes"][0]["stage2_route"] == "FOOD_REVIEW"
     assert output["routes"][0]["store_alias"] == "FS11_FOOD_REVIEW"
     assert "PRODUCT_NAME_UNCLEAR" in output["uncertainty_codes"]
+    validate_stage1_links(output)
 
 
 def test_uncertain_product_with_health_claim_is_routed_for_recall() -> None:

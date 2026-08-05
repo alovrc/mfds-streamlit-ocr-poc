@@ -755,11 +755,43 @@ def normalize_stage2_statuses(output: dict[str, Any]) -> None:
         output["product_overall_status"] = STATUS_BY_SCORE[expected]
 
 
+def quarantine_non_advertising_candidates(
+    stage1_output: dict[str, Any],
+    product_results: list[dict[str, Any]],
+) -> None:
+    """Do not expand non-commercial health information into ad violations."""
+
+    if stage1_output.get("sales_ad_context") != "NOT_CONFIRMED":
+        return
+    if stage1_output.get("sales_signals"):
+        return
+
+    for product in product_results:
+        changed = False
+        for review in product.get("violation_reviews", []):
+            if (
+                review.get("status") in {"HIGH", "REVIEW", "LOW"}
+                or (type(review.get("risk_score")) is int and review["risk_score"] > 0)
+                or review.get("expression_ids")
+            ):
+                review["risk_score"] = 0
+                review["status"] = "NOT_DETECTED"
+                review["expression_ids"] = []
+                review["score_reason"] = (
+                    "판매·알선·광고성이 확인되지 않아 건강정보 표현을 "
+                    "부당광고 후보로 확장하지 않았습니다."
+                )
+                changed = True
+        if changed:
+            normalize_stage2_statuses(product)
+
+
 def aggregate(
     source: dict[str, Any],
     stage1_output: dict[str, Any],
     product_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    quarantine_non_advertising_candidates(stage1_output, product_results)
     deterministic_aggregation = build_deterministic_aggregation(
         product_results
     )

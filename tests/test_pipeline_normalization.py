@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from scripts.run_pipeline import normalize_stage2_statuses
+from scripts.run_pipeline import (
+    normalize_stage2_statuses,
+    quarantine_non_advertising_candidates,
+)
 from validators.core import normalize_quote_text
 
 
@@ -26,3 +29,32 @@ def test_status_is_derived_from_risk_score() -> None:
 
     assert output["violation_reviews"][0]["status"] == "HIGH"
     assert output["product_overall_status"] == "HIGH"
+
+
+def test_non_advertising_health_information_is_not_scored_as_ad() -> None:
+    stage1 = {
+        "sales_ad_context": "NOT_CONFIRMED",
+        "sales_signals": [],
+    }
+    products = [
+        {
+            "product_overall_status": "HIGH",
+            "product_overall_risk_score": 9,
+            "violation_reviews": [
+                {
+                    "status": "HIGH",
+                    "risk_score": 9,
+                    "expression_ids": ["EXP-1"],
+                    "score_reason": "health information",
+                }
+            ],
+        }
+    ]
+
+    quarantine_non_advertising_candidates(stage1, products)
+
+    review = products[0]["violation_reviews"][0]
+    assert review["status"] == "NOT_DETECTED"
+    assert review["risk_score"] == 0
+    assert review["expression_ids"] == []
+    assert products[0]["product_overall_status"] == "NOT_DETECTED"

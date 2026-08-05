@@ -108,12 +108,18 @@ def validate_stage1_links(stage1: dict[str, Any]) -> None:
         if (
             product_type == "UNCERTAIN"
             and (
-                route["stage2_route"] != "NO_STAGE2"
-                or route["store_alias"] != "FS01_PRODUCT_GATE"
+                (
+                    route["stage2_route"] != "NO_STAGE2"
+                    or route["store_alias"] != "FS01_PRODUCT_GATE"
+                )
+                and (
+                    route["stage2_route"] != "FOOD_REVIEW"
+                    or route["store_alias"] != "FS11_FOOD_REVIEW"
+                )
             )
         ):
             raise ContractValidationError(
-                "UNCERTAIN requires NO_STAGE2 and FS01 route"
+                "UNCERTAIN requires NO_STAGE2/FS01 or FOOD_REVIEW/FS11 route"
             )
 
 
