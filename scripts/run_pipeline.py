@@ -35,6 +35,7 @@ from validators.core import (
     validate_stage1_links,
     validate_stage2,
     validate_stage2_input,
+    retrieved_id_aliases,
 )
 
 PRODUCT_TYPE_CANDIDATE_THRESHOLD = 0.50
@@ -467,6 +468,7 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
             result.data,
             payload["file_search_store_alias"],
         )
+    quarantine_unretrieved_evidence_ids(result.data)
     apply_deterministic_review_scores(result.data)
     normalize_stage2_statuses(result.data)
     validate_stage2(payload, result.data)
@@ -507,6 +509,50 @@ def attach_rules_to_tracking(
             if isinstance(item, dict)
         }.values()
     )
+
+
+def quarantine_unretrieved_evidence_ids(output: dict[str, Any]) -> None:
+    """Remove model-cited evidence IDs absent from the verified search result."""
+
+    tracking = output.get("file_search")
+    if not isinstance(tracking, dict):
+        return
+    retrieved = retrieved_id_aliases(tracking)
+    invalid_any = False
+    invalid_official = False
+    output_uncertainty = output.setdefault("uncertainty_codes", [])
+    for review in output.get("violation_reviews", []):
+        if not isinstance(review, dict):
+            continue
+        review_uncertainty = review.setdefault("uncertainty_codes", [])
+        for field in ("official_evidence_ids", "case_ids"):
+            ids = list(review.get(field, []))
+            valid = [item for item in ids if item in retrieved]
+            invalid = [item for item in ids if item not in retrieved]
+            if not invalid:
+                continue
+            review[field] = valid
+            invalid_any = True
+            invalid_official = invalid_official or field == "official_evidence_ids"
+            if "RETRIEVED_ID_NOT_FOUND" not in review_uncertainty:
+                review_uncertainty.append("RETRIEVED_ID_NOT_FOUND")
+            if "RETRIEVED_ID_NOT_FOUND" not in output_uncertainty:
+                output_uncertainty.append("RETRIEVED_ID_NOT_FOUND")
+    if invalid_official:
+        if "SEARCH_NO_OFFICIAL_EVIDENCE" not in output_uncertainty:
+            output_uncertainty.append("SEARCH_NO_OFFICIAL_EVIDENCE")
+        for review in output.get("violation_reviews", []):
+            if (
+                isinstance(review, dict)
+                and not review.get("official_evidence_ids")
+                and "SEARCH_NO_OFFICIAL_EVIDENCE"
+                not in review.setdefault("uncertainty_codes", [])
+            ):
+                review["uncertainty_codes"].append(
+                    "SEARCH_NO_OFFICIAL_EVIDENCE"
+                )
+    if invalid_any:
+        output["requires_human_review"] = True
 
 
 def quarantine_invalid_problem_expressions(
