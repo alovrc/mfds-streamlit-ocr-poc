@@ -946,6 +946,7 @@ def apply_food_hff_confusion_guardrail(
             "quote": "영양제",
             "source_field": source_field,
             "product_linked": True,
+            "classification": "PROHIBITED_CANDIDATE",
         }
         expressions.append(expression)
     expression_id = expression["expression_id"]

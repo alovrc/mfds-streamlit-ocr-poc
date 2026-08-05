@@ -415,13 +415,21 @@
                 },
                 "product_linked": {
                   "type": "boolean"
+                },
+                "classification": {
+                  "type": "string",
+                  "enum": [
+                    "GENERAL_HEALTH",
+                    "PROHIBITED_CANDIDATE"
+                  ]
                 }
               },
               "required": [
                 "expression_id",
                 "quote",
                 "source_field",
-                "product_linked"
+                "product_linked",
+                "classification"
               ],
               "additionalProperties": false
             }
