@@ -44,23 +44,92 @@ def _batch_jsonl(worker: BatchWorker, jobs: list[dict[str, Any]]) -> bytes:
     return b"".join(_json_bytes(row) for row in rows)
 
 
+def _failure_payload(job: Any) -> dict[str, Any]:
+    failure = job.failure or {}
+    return {
+        "job": job.public(),
+        "source": job.resolved_source or job.source,
+        "failure": failure,
+    }
+
+
+def _failure_markdown(job: Any) -> bytes:
+    failure = job.failure or {}
+    source = job.resolved_source or job.source
+    lines = [
+        "# MFDS Batch Failure Result",
+        "",
+        f"- record_id: {job.source.get('record_id', '')}",
+        f"- job_id: {job.job_id}",
+        f"- model: {job.model}",
+        f"- PaddleOCR: {'included' if job.use_paddle_ocr else 'excluded'}",
+        "",
+        "## Error",
+        "",
+        f"- error_code: {failure.get('error_code', 'UNKNOWN')}",
+        f"- stage: {failure.get('stage', '')}",
+        "",
+        "```text",
+        str(failure.get('message', 'No error details.')),
+        "```",
+        "",
+        "## Input",
+        "",
+        "```json",
+        json.dumps(source, ensure_ascii=False, indent=2),
+        "```",
+        "",
+    ]
+    return "\n".join(lines).encode("utf-8")
+
+
 def _render_completed_downloads(worker: BatchWorker, jobs: list[dict[str, Any]]) -> None:
-    completed = [item for item in jobs if item["status"] == "SUCCEEDED"]
-    if not completed:
+    terminal = [item for item in jobs if item["status"] in {"SUCCEEDED", "FAILED"}]
+    if not terminal:
         return
-    st.subheader("완료 결과")
+    st.subheader("작업 결과")
     selected_id = st.selectbox(
-        "다운로드할 완료 건",
-        [item["job_id"] for item in completed],
+        "결과를 확인하거나 다운로드할 작업",
+        [item["job_id"] for item in terminal],
         format_func=lambda value: next(
-            f"{item['record_id']} · {item['job_id']}"
-            for item in completed
+            f"{item['record_id']} · {item['status']} · {item['job_id']}"
+            for item in terminal
             if item["job_id"] == value
         ),
-        key="batch_completed_job",
+        key="batch_terminal_job",
     )
     selected = worker.get(selected_id)
-    if not selected or not selected.output:
+    if not selected:
+        return
+    if selected.status == "FAILED":
+        failure = selected.failure or {}
+        st.error(
+            f"{failure.get('error_code', 'UNKNOWN')}: "
+            f"{failure.get('message', 'No error details.')}",
+        )
+        st.download_button(
+            "실패 결과 JSON 다운로드",
+            _json_bytes(_failure_payload(selected)),
+            file_name=f"{selected.job_id}.failure.json",
+            mime="application/json; charset=utf-8",
+            use_container_width=True,
+        )
+        st.download_button(
+            "실패 결과 Markdown 다운로드",
+            _failure_markdown(selected),
+            file_name=f"{selected.job_id}.failure.md",
+            mime="text/markdown; charset=utf-8",
+            use_container_width=True,
+        )
+        st.download_button(
+            "전체 배치 결과 JSONL 다운로드",
+            _batch_jsonl(worker, jobs),
+            file_name="mfds_batch_results.jsonl",
+            mime="application/x-ndjson; charset=utf-8",
+            use_container_width=True,
+        )
+        return
+    if not selected.output:
         return
     source = selected.resolved_source or selected.source
     st.download_button(
