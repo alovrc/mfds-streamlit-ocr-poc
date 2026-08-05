@@ -191,6 +191,7 @@ def _render_queue_status(worker: BatchWorker) -> None:
         hide_index=True,
         use_container_width=True,
     )
+    _render_completed_downloads(worker, jobs)
 
 
 def _preview_rows(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -295,8 +296,6 @@ def main() -> None:
     st.divider()
     st.subheader("배치 진행 상태")
     _render_queue_status(worker)
-    jobs = worker.snapshots()
-    _render_completed_downloads(worker, jobs)
 
 
 if __name__ == "__main__":
