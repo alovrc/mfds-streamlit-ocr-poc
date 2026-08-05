@@ -31,6 +31,9 @@
 - 원문에 없는 표현을 재작성하지 않는다.
 - 긴 문단 전체를 인용하지 않는다.
 - 각 표현이 현재 제품과 직접 연결되는지 기록한다.
+- 각 표현에 `classification`을 포함한다. 일반 건강·영양 정보는
+  `GENERAL_HEALTH`, 구체적인 금지 유형 후보는
+  `PROHIBITED_CANDIDATE`로 표시한다.
 - 입력 payload의 `stage1_uncertainty_codes`에 `INPUT_INCOMPLETE`가 있으면
   2단계 File Search와 분석은 계속 수행하되, 입력 불충분을 이유로
   `NO_PROBLEM`을 반환하지 않는다. 확인 가능한 인용과 후보는 남기고
