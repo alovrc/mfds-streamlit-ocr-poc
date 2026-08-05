@@ -132,6 +132,7 @@ def _render_completed_downloads(worker: BatchWorker, jobs: list[dict[str, Any]])
     if not selected.output:
         return
     source = selected.resolved_source or selected.source
+    st.json(selected.output, expanded=True)
     st.download_button(
         "선택 결과 JSON 다운로드",
         _json_bytes(
@@ -175,6 +176,7 @@ def _render_queue_status(worker: BatchWorker) -> None:
     second.metric("진행 중", counts["RUNNING"])
     third.metric("완료", counts["SUCCEEDED"])
     fourth.metric("실패", counts["FAILED"])
+    _render_completed_downloads(worker, jobs)
     st.dataframe(
         [
             {
@@ -191,7 +193,6 @@ def _render_queue_status(worker: BatchWorker) -> None:
         hide_index=True,
         use_container_width=True,
     )
-    _render_completed_downloads(worker, jobs)
 
 
 def _preview_rows(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
