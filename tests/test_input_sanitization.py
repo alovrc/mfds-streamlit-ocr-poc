@@ -1,4 +1,5 @@
 from scripts.run_pipeline import (
+    quarantine_general_health_expressions,
     quarantine_invalid_problem_expressions,
     sanitize_unicode_surrogates,
 )
@@ -62,6 +63,38 @@ def test_quarantine_invalid_problem_expression() -> None:
     assert "QUOTE_NOT_IN_SOURCE" in review["uncertainty_codes"]
     assert "QUOTE_NOT_IN_SOURCE" in output["uncertainty_codes"]
     assert output["requires_human_review"] is True
+
+
+def test_generic_health_wording_is_not_a_problem_candidate() -> None:
+    output = {
+        "problem_expressions": [
+            {
+                "expression_id": "E1",
+                "quote": "혈당 관리에 도움을 줄 수 있습니다",
+                "source_field": "body_text",
+                "product_linked": True,
+            }
+        ],
+        "violation_reviews": [
+            {
+                "violation_type": "FALSE_EXAGGERATED",
+                "status": "HIGH",
+                "risk_score": 8,
+                "expression_ids": ["E1"],
+                "rule_ids": ["RULE-1"],
+                "official_evidence_ids": [],
+                "score_factors": [],
+                "score_reason": "candidate",
+                "uncertainty_codes": [],
+            }
+        ],
+    }
+
+    quarantine_general_health_expressions(output)
+
+    assert output["problem_expressions"] == []
+    assert output["violation_reviews"][0]["status"] == "NOT_DETECTED"
+    assert output["violation_reviews"][0]["risk_score"] == 0
 
 
 def test_high_risk_without_official_evidence_keeps_rule_based_score() -> None:

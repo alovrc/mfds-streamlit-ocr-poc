@@ -223,8 +223,8 @@ def build_markdown_report(
                 "",
                 (
                     f"> 증거요건 미충족 후보 {len(unresolved)}개는 "
-                    "`INSUFFICIENT_EVIDENCE`로 유지되며 담당자 확인이 "
-                    "필요합니다."
+                    "탐지 판정 `REVIEW`로 유지되며 원본 상태는 "
+                    "`INSUFFICIENT_EVIDENCE`입니다. 담당자 확인이 필요합니다."
                 ),
             ]
         )
@@ -388,6 +388,13 @@ def build_markdown_report(
                     product.get("product_name"),
                     label,
                     review.get("status"),
+                    (
+                        "PROBLEM_CANDIDATE"
+                        if review.get("status") in ACTIVE_STATUSES
+                        else "REVIEW"
+                        if review.get("status") == "INSUFFICIENT_EVIDENCE"
+                        else "NO_PROBLEM"
+                    ),
                     review.get("risk_score"),
                     len(review.get("rule_ids", [])),
                     len(review.get("official_evidence_ids", [])),
@@ -402,6 +409,7 @@ def build_markdown_report(
                 "제품명",
                 "위반 가능 항목",
                 "상태",
+                "탐지 판정",
                 "위험도",
                 "Rule ID",
                 "공식근거 ID",
@@ -430,6 +438,7 @@ def build_markdown_report(
                 f"### 4.{index}. {_text(product.get('product_name'))} — {label}",
                 "",
                 f"- 상태: `{_text(review.get('status'))}`",
+                "- 탐지 판정: `PROBLEM_CANDIDATE`",
                 f"- 위험도: `{_text(review.get('risk_score'))}/10`",
                 "- 법령 조항: "
                 + (

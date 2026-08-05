@@ -25,6 +25,7 @@ from risk_aggregation import (
     apply_deterministic_review_scores,
     build_deterministic_aggregation,
     derive_record_evidence_status,
+    quarantine_general_health_expressions,
 )
 from validators.core import (
     ContractValidationError,
@@ -229,13 +230,12 @@ def normalize_stage1_product_type_confidence(
     output: dict[str, Any],
     source: dict[str, Any] | None = None,
 ) -> None:
-    """Route non-master candidates with a recall-preserving review fallback.
+    """Route non-master candidates with a review-preserving fallback.
 
     A unique exact product-master match remains authoritative. Other products
     are routed only when one score is at least 0.50 and leads the other by
-    more than the 0.05 tie margin. When the ad text contains a strong
-    health-effect or disease-related signal, low or near-tied scores use
-    FOOD_FALLBACK and continue to stage 2 for human-reviewed recall.
+    more than the 0.05 tie margin. Low or near-tied scores continue through
+    the food review route and are marked PRODUCT_TYPE_UNCERTAIN_REVIEW.
     """
 
     route_by_index = {
@@ -348,9 +348,13 @@ def normalize_stage1_product_type_confidence(
             )
         else:
             needs_human_review = True
-            product["product_subtype"] = "NOT_APPLICABLE"
-            route["stage2_route"] = "NO_STAGE2"
-            route["store_alias"] = "FS01_PRODUCT_GATE"
+            product["product_subtype"] = "UNKNOWN_FOOD"
+            route["stage2_route"] = "FOOD_REVIEW"
+            route["store_alias"] = "FS11_FOOD_REVIEW"
+            if RECALL_REVIEW_UNCERTAINTY_CODE not in uncertainty_codes:
+                uncertainty_codes.append(RECALL_REVIEW_UNCERTAINTY_CODE)
+            if RECALL_REVIEW_UNCERTAINTY_CODE not in record_uncertainty:
+                record_uncertainty.append(RECALL_REVIEW_UNCERTAINTY_CODE)
             if (
                 scores_valid
                 and food_confidence < PRODUCT_TYPE_CANDIDATE_THRESHOLD
@@ -378,7 +382,7 @@ def normalize_stage1_product_type_confidence(
                 ):
                     record_uncertainty.append(code)
             decisions.append(
-                f"제품 {product_index}: 품목 불명확·담당자 검토"
+                f"제품 {product_index}: 품목 불명확하지만 2단계 식품 기준 검토"
             )
 
         normalized_types.append(decision)
@@ -462,6 +466,7 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
             f"{payload['title']} {payload['body_text']}"
         )
     quarantine_invalid_problem_expressions(payload, result.data)
+    quarantine_general_health_expressions(result.data)
     apply_food_hff_confusion_guardrail(payload, result.data)
     if provider == "openai":
         attach_rules_to_tracking(

@@ -127,8 +127,8 @@ def test_both_scores_below_point_five_require_human_review() -> None:
 
     assert output["products"][0]["product_type"] == "UNCERTAIN"
     assert output["record_product_type"] == "UNCERTAIN"
-    assert output["routes"][0]["stage2_route"] == "NO_STAGE2"
-    assert output["routes"][0]["store_alias"] == "FS01_PRODUCT_GATE"
+    assert output["routes"][0]["stage2_route"] == "FOOD_REVIEW"
+    assert output["routes"][0]["store_alias"] == "FS11_FOOD_REVIEW"
     assert "PRODUCT_NAME_UNCLEAR" in output["uncertainty_codes"]
 
 
@@ -175,7 +175,7 @@ def test_near_tied_scores_require_human_review() -> None:
         "CONFLICTING_PRODUCT_TYPE_EVIDENCE"
         in output["uncertainty_codes"]
     )
-    assert output["routes"][0]["stage2_route"] == "NO_STAGE2"
+    assert output["routes"][0]["stage2_route"] == "FOOD_REVIEW"
 
 
 def test_explicit_conflicting_evidence_requires_human_review() -> None:

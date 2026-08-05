@@ -23,6 +23,14 @@ VIOLATION_LABELS = {
 ACTIVE_STATUSES = {"HIGH", "REVIEW", "LOW"}
 
 
+def _screening_decision(status: str | None) -> str:
+    if status in ACTIVE_STATUSES:
+        return "PROBLEM_CANDIDATE"
+    if status == "INSUFFICIENT_EVIDENCE":
+        return "REVIEW"
+    return "NO_PROBLEM"
+
+
 def _citation_index(
     citations: list[dict[str, Any]],
 ) -> dict[str, dict[str, Any]]:
@@ -158,6 +166,7 @@ def _candidate(review: dict[str, Any]) -> dict[str, Any]:
             str(review.get("violation_type")),
         ),
         "status": review.get("status"),
+        "screening_decision": _screening_decision(review.get("status")),
         "risk_score": review.get("risk_score"),
         "expression_ids": expression_ids,
         "problem_expressions": [

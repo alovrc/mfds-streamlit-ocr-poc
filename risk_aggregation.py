@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,46 @@ STATUS_BY_SCORE = {
     9: "HIGH",
     10: "HIGH",
 }
+
+GENERAL_HEALTH_PHRASES = (
+    "건강에 도움",
+    "건강 관리에 도움",
+    "건강관리에 도움",
+    "혈당 관리에 도움",
+    "혈압 관리에 도움",
+    "혈관 건강에 도움",
+    "콜레스테롤 관리에 도움",
+    "면역력에 도움",
+    "영양 보충",
+    "도움을 줄 수",
+    "도움이 될 수",
+)
+SPECIFIC_PROBLEM_MARKERS = (
+    "혈압약",
+    "혈당약",
+    "당뇨약",
+    "천연 혈압약",
+    "의약품",
+    "약품",
+    "약처럼",
+    "약효",
+    "약물",
+    "약입니다",
+    "치료",
+    "예방",
+    "개선",
+    "정상화",
+    "회복",
+    "낮춰",
+    "낮추",
+    "효과",
+    "기능성",
+    "인증",
+    "임상",
+    "체험",
+    "추천",
+    "보증",
+)
 
 
 def load_risk_rules(path: Path = RULES_PATH) -> dict[str, Any]:
@@ -68,6 +109,55 @@ def _valid_expression_ids(output: dict[str, Any]) -> set[str]:
     }
 
 
+def _is_general_health_only_quote(quote: str) -> bool:
+    normalized = re.sub(r"\s+", "", quote)
+    has_general_phrase = any(
+        re.sub(r"\s+", "", phrase) in normalized
+        for phrase in GENERAL_HEALTH_PHRASES
+    )
+    has_specific_marker = any(
+        re.sub(r"\s+", "", marker) in normalized
+        for marker in SPECIFIC_PROBLEM_MARKERS
+    )
+    return has_general_phrase and not has_specific_marker
+
+
+def quarantine_general_health_expressions(output: dict[str, Any]) -> None:
+    """Exclude generic wellness wording from prohibited-ad candidates."""
+
+    generic_ids = {
+        str(expression.get("expression_id"))
+        for expression in output.get("problem_expressions", [])
+        if expression.get("expression_id")
+        and _is_general_health_only_quote(str(expression.get("quote") or ""))
+    }
+    if not generic_ids:
+        return
+
+    output["problem_expressions"] = [
+        expression
+        for expression in output.get("problem_expressions", [])
+        if str(expression.get("expression_id")) not in generic_ids
+    ]
+    for review in output.get("violation_reviews", []):
+        original_ids = [str(value) for value in review.get("expression_ids", [])]
+        remaining_ids = [
+            expression_id
+            for expression_id in original_ids
+            if expression_id not in generic_ids
+        ]
+        if remaining_ids == original_ids:
+            continue
+        review["expression_ids"] = remaining_ids
+        if not remaining_ids:
+            review["risk_score"] = 0
+            review["status"] = "NOT_DETECTED"
+            review["score_reason"] = (
+                "일반적인 건강·영양 도움 표현만으로는 "
+                "부당광고 후보로 판정하지 않습니다."
+            )
+
+
 def apply_deterministic_review_scores(
     output: dict[str, Any],
     rules: dict[str, Any] | None = None,
@@ -76,10 +166,9 @@ def apply_deterministic_review_scores(
 
     Only a detected candidate with a linked, verbatim expression is scoreable.
     Every active candidate requires a linked verbatim expression and a local
-    Rule ID. Official evidence is supplementary: a missing official-evidence ID
-    remains visible as an uncertainty but does not invalidate or down-score the
-    candidate. Unsupported candidates remain visible as
-    INSUFFICIENT_EVIDENCE with score 0.
+    Rule ID. Official evidence is supplementary to screening and is shown as
+    a separate review state. Unsupported candidates remain visible as
+    INSUFFICIENT_EVIDENCE with score 0 rather than becoming NO_PROBLEM.
     """
 
     rules = rules or load_risk_rules()

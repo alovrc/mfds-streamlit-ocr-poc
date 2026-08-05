@@ -598,6 +598,7 @@ def render_independent_report(report: dict[str, Any]) -> None:
                 "건기식 confidence": item["hff_confidence"],
                 "위반 가능 항목": item["violation_label"],
                 "상태": item["status"],
+                "탐지 판정": item["screening_decision"],
                 "위험도": item["risk_score"],
                 "법령 조항": "; ".join(
                     str(basis.get("article") or "조항 미매핑")
@@ -710,6 +711,7 @@ def render_independent_report(report: dict[str, Any]) -> None:
                         "제품명": item["product_name"] or "-",
                         "위반 후보": item["violation_label"],
                         "상태": item["status"],
+                        "탐지 판정": item["screening_decision"],
                         "법령 조항": "; ".join(
                             str(basis.get("article") or "조항 미매핑")
                             for basis in item.get("legal_basis", [])
