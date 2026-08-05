@@ -5,7 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from result_partition import ACTIVE_STATUSES, VIOLATION_LABELS
+from result_partition import (
+    ACTIVE_STATUSES,
+    VIOLATION_LABELS,
+    legal_basis_details,
+)
 
 HIDDEN_UNCERTAINTY_CODES = {"SEARCH_NO_OFFICIAL_EVIDENCE"}
 
@@ -416,6 +420,10 @@ def build_markdown_report(
         )
         expressions = _expression_map(product)
         citations = _citation_map(product)
+        basis_details = legal_basis_details(
+            list(review.get("rule_ids", [])),
+            list(review.get("official_evidence_ids", [])),
+        )
         lines.extend(
             [
                 "",
@@ -423,6 +431,24 @@ def build_markdown_report(
                 "",
                 f"- 상태: `{_text(review.get('status'))}`",
                 f"- 위험도: `{_text(review.get('risk_score'))}/10`",
+                "- 법령 조항: "
+                + (
+                    "; ".join(
+                        str(basis.get("article") or "조항 미매핑")
+                        for basis in basis_details
+                    )
+                    or "조항 미매핑"
+                ),
+                "- 법령 근거 상태: "
+                + (
+                    "공식 검색근거 확인"
+                    if any(
+                        basis.get("official_evidence_status")
+                        == "OFFICIAL_SEARCH_VERIFIED"
+                        for basis in basis_details
+                    )
+                    else "공식 검색근거 확인 필요"
+                ),
                 f"- 판단 사유: {_text(review.get('score_reason'))}",
                 f"- Rule ID: {_text(review.get('rule_ids'))}",
                 f"- 공식근거 ID: {_text(review.get('official_evidence_ids'))}",

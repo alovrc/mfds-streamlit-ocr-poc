@@ -1,4 +1,4 @@
-from result_partition import independent_review_output
+from result_partition import independent_review_output, legal_basis_details
 
 
 def review(
@@ -115,3 +115,22 @@ def test_report_contains_only_independent_review_fields() -> None:
         "deterministic_aggregation",
         "raw_model_summary",
     }
+
+
+def test_legal_basis_resolves_article_and_official_search_status() -> None:
+    verified = legal_basis_details(
+        ["RULE::FOOD_REVIEW::MFDS-05-DEC-001"],
+        ["OFFICIAL-1"],
+    )
+    assert verified[0]["article"] == "시행령 별표 1 제1호"
+    assert verified[0]["legal_basis_status"] == "RULE_MAPPED"
+    assert verified[0]["official_evidence_status"] == "OFFICIAL_SEARCH_VERIFIED"
+
+    review_required = legal_basis_details(
+        ["RULE::FOOD_REVIEW::MFDS-05-DEC-001"],
+        [],
+    )
+    assert (
+        review_required[0]["official_evidence_status"]
+        == "OFFICIAL_SEARCH_REVIEW_REQUIRED"
+    )

@@ -16,6 +16,7 @@ from streamlit_app import (
     require_password,
     render_openai_model_selector,
 )
+from result_partition import independent_review_output
 
 
 @st.cache_resource
@@ -132,7 +133,10 @@ def _render_completed_downloads(worker: BatchWorker, jobs: list[dict[str, Any]])
     if not selected.output:
         return
     source = selected.resolved_source or selected.source
+    independent_review = independent_review_output(selected.output)
     st.json(selected.output, expanded=True)
+    st.subheader("법령 조항·근거 상태")
+    st.json(independent_review, expanded=True)
     st.download_button(
         "선택 결과 JSON 다운로드",
         _json_bytes(
@@ -140,6 +144,7 @@ def _render_completed_downloads(worker: BatchWorker, jobs: list[dict[str, Any]])
                 "job": selected.public(),
                 "source": source,
                 "output": selected.output,
+                "independent_review": independent_review,
             }
         ),
         file_name=f"{selected.job_id}.json",

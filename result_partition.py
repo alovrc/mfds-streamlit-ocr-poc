@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from rule_catalog import load_rule_catalog
+
 
 VIOLATION_LABELS = {
     "DISEASE_PREVENTION_TREATMENT": "질병의 예방·치료 효능",
@@ -56,6 +58,51 @@ def _evidence_details(
                 "page": citation.get("page"),
                 "excerpt": citation.get("excerpt"),
                 "citation_matched": bool(citation),
+            }
+        )
+    return details
+
+
+def legal_basis_details(
+    rule_ids: list[str],
+    official_evidence_ids: list[str],
+) -> list[dict[str, Any]]:
+    """Resolve local Rule IDs to explicit legal article metadata."""
+
+    catalog = load_rule_catalog()
+    rules_by_id = {
+        str(rule.get("unified_rule_id")): rule
+        for rule in catalog.get("rules", [])
+    }
+    official_status = (
+        "OFFICIAL_SEARCH_VERIFIED"
+        if official_evidence_ids
+        else "OFFICIAL_SEARCH_REVIEW_REQUIRED"
+    )
+    details: list[dict[str, Any]] = []
+    for rule_id in rule_ids:
+        unified_id = str(rule_id).rsplit("::", 1)[-1]
+        rule = rules_by_id.get(unified_id)
+        if not rule:
+            details.append(
+                {
+                    "rule_id": rule_id,
+                    "legal_basis_status": "RULE_MAPPING_UNRESOLVED",
+                    "article": None,
+                    "source_document": None,
+                    "source_url": None,
+                    "official_evidence_status": official_status,
+                }
+            )
+            continue
+        details.append(
+            {
+                "rule_id": rule_id,
+                "legal_basis_status": "RULE_MAPPED",
+                "article": rule.get("article"),
+                "source_document": rule.get("source_document"),
+                "source_url": rule.get("source_url"),
+                "official_evidence_status": official_status,
             }
         )
     return details
@@ -126,6 +173,10 @@ def _candidate(review: dict[str, Any]) -> dict[str, Any]:
         "rule_ids": rule_ids,
         "official_evidence_ids": official_evidence_ids,
         "case_ids": case_ids,
+        "legal_basis": legal_basis_details(
+            rule_ids,
+            official_evidence_ids,
+        ),
         "evidence_details": {
             "rules": _evidence_details(rule_ids, citations),
             "official_evidence": _evidence_details(

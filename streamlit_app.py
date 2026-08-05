@@ -599,6 +599,19 @@ def render_independent_report(report: dict[str, Any]) -> None:
                 "위반 가능 항목": item["violation_label"],
                 "상태": item["status"],
                 "위험도": item["risk_score"],
+                "법령 조항": "; ".join(
+                    str(basis.get("article") or "조항 미매핑")
+                    for basis in item.get("legal_basis", [])
+                ) or "조항 미매핑",
+                "근거 상태": (
+                    "공식 검색근거 확인"
+                    if any(
+                        basis.get("official_evidence_status")
+                        == "OFFICIAL_SEARCH_VERIFIED"
+                        for basis in item.get("legal_basis", [])
+                    )
+                    else "공식 검색근거 확인 필요"
+                ),
                 "Rule ID 수": len(item["rule_ids"]),
                 "공식근거 ID 수": len(item["official_evidence_ids"]),
                 "불확실성": display_uncertainty_codes(
@@ -628,6 +641,34 @@ def render_independent_report(report: dict[str, Any]) -> None:
                         )
                 else:
                     st.warning("연결된 광고 원문 문구가 없습니다.")
+
+                legal_basis = item.get("legal_basis", [])
+                st.markdown("**법령 조항 및 근거 상태**")
+                if legal_basis:
+                    st.dataframe(
+                        [
+                            {
+                                "Rule ID": basis.get("rule_id"),
+                                "법령 조항": basis.get("article")
+                                or "조항 미매핑",
+                                "법령 근거 상태": basis.get(
+                                    "legal_basis_status"
+                                ),
+                                "공식 검색근거": basis.get(
+                                    "official_evidence_status"
+                                ),
+                                "법령 원문": basis.get("source_url")
+                                or "-",
+                            }
+                            for basis in legal_basis
+                        ],
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.warning(
+                        "연결된 Rule이 없어 법령 조항을 매핑하지 못했습니다."
+                    )
 
                 evidence = item["evidence_details"]
                 render_evidence_group(
@@ -669,6 +710,10 @@ def render_independent_report(report: dict[str, Any]) -> None:
                         "제품명": item["product_name"] or "-",
                         "위반 후보": item["violation_label"],
                         "상태": item["status"],
+                        "법령 조항": "; ".join(
+                            str(basis.get("article") or "조항 미매핑")
+                            for basis in item.get("legal_basis", [])
+                        ) or "조항 미매핑",
                         "Rule ID 수": len(item["rule_ids"]),
                         "공식근거 ID 수": len(
                             item["official_evidence_ids"]
