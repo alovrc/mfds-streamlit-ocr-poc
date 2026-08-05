@@ -19,7 +19,7 @@ from adapters.common.contracts import (
     store_identifier,
 )
 
-DEFAULT_MODEL = "gpt-5.6-sol"
+DEFAULT_MODEL = "gpt-5.6-luna"
 STORE_NAMES = {
     "FS01_PRODUCT_GATE": "MFDS_FS01_PRODUCT_TYPE_20260728_V01",
     "FS11_FOOD_REVIEW": "MFDS_FS11_FOOD_REVIEW_20260727_V09",
