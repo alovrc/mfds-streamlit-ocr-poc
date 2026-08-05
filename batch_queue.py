@@ -11,29 +11,41 @@ from datetime import datetime, timezone
 from queue import Queue
 from typing import Any, Callable
 
-JobRunner = Callable[[dict[str, Any], str], tuple[dict[str, Any], dict[str, Any]]]
+JobRunner = Callable[
+    [dict[str, Any], str, bool],
+    tuple[dict[str, Any], dict[str, Any]],
+]
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def process_source(source: dict[str, Any], model: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def process_source(
+    source: dict[str, Any],
+    model: str,
+    use_paddle_ocr: bool = True,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Resolve URL/OCR input and run the existing OpenAI pipeline."""
 
     from ocr_pipeline import collect_and_ocr, merge_capture_text
     from scripts.run_pipeline import run
+    from web_capture import collect_page
 
     resolved = dict(source)
     if resolved.get("source_url") and not resolved.get("body_text"):
-        capture = collect_and_ocr(str(resolved["source_url"]))
-        resolved["title"] = resolved.get("title") or capture.get("title", "")
-        resolved["body_text"] = merge_capture_text(
-            resolved["title"],
-            capture.get("body_text", ""),
-            capture.get("ocr_records", []),
-        )
-        resolved["ocr_engine"] = "PADDLEOCR_KOREAN_PP-OCRV5"
+        if use_paddle_ocr:
+            capture = collect_and_ocr(str(resolved["source_url"]))
+            resolved["title"] = resolved.get("title") or capture.get("title", "")
+            resolved["body_text"] = merge_capture_text(
+                resolved["title"],
+                capture.get("body_text", ""),
+                capture.get("ocr_records", []),
+            )
+        else:
+            page = collect_page(str(resolved["source_url"]))
+            resolved["title"] = resolved.get("title") or page.title
+            resolved["body_text"] = page.body_text
     os.environ["OPENAI_MODEL"] = model
     return run("openai", resolved), resolved
 
@@ -44,6 +56,7 @@ class BatchJob:
     sequence: int
     source: dict[str, Any]
     model: str
+    use_paddle_ocr: bool = True
     status: str = "QUEUED"
     created_at: str = field(default_factory=_now)
     started_at: str | None = None
@@ -60,6 +73,7 @@ class BatchJob:
             "title": self.source.get("title", ""),
             "source_url": self.source.get("source_url", ""),
             "model": self.model,
+            "paddle_ocr": self.use_paddle_ocr,
             "status": self.status,
             "created_at": self.created_at,
             "started_at": self.started_at,
@@ -83,7 +97,12 @@ class BatchWorker:
         )
         self._thread.start()
 
-    def submit_many(self, sources: list[dict[str, Any]], model: str) -> list[str]:
+    def submit_many(
+        self,
+        sources: list[dict[str, Any]],
+        model: str,
+        use_paddle_ocr: bool = True,
+    ) -> list[str]:
         job_ids: list[str] = []
         with self._lock:
             start = len(self._jobs) + 1
@@ -94,6 +113,7 @@ class BatchWorker:
                     sequence=start + offset,
                     source=dict(source),
                     model=model,
+                    use_paddle_ocr=use_paddle_ocr,
                 )
                 self._jobs[job_id] = job
                 self._queue.put(job_id)
@@ -119,7 +139,11 @@ class BatchWorker:
                 job.status = "RUNNING"
                 job.started_at = _now()
             try:
-                output, resolved_source = self._runner(job.source, job.model)
+                output, resolved_source = self._runner(
+                    job.source,
+                    job.model,
+                    job.use_paddle_ocr,
+                )
             except Exception as error:
                 from scripts.run_pipeline import failure_record
 

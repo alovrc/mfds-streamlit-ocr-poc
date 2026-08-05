@@ -114,6 +114,7 @@ def _render_queue_status(worker: BatchWorker) -> None:
                 "제목": item["title"],
                 "상태": item["status"],
                 "모델": item["model"],
+                "PaddleOCR": "포함" if item["paddle_ocr"] else "비포함",
                 "오류": item["error_code"],
             }
             for item in jobs
@@ -148,6 +149,12 @@ def main() -> None:
     configure_from_secrets()
     openai_configured = bool(os.getenv("OPENAI_API_KEY", "").strip())
     selected_model = render_openai_model_selector()
+    use_paddle_ocr = st.sidebar.toggle(
+        "PaddleOCR 이미지 분석 포함",
+        value=True,
+        help="URL 입력에 포함된 이미지의 한국어 PaddleOCR 분석 여부를 선택합니다."
+        " CSV 본문에 이미 들어온 텍스트에는 영향을 주지 않습니다.",
+    )
     worker = _worker()
 
     st.title("MFDS 2단계 Cloud File Search 순차 배치")
@@ -163,7 +170,10 @@ def main() -> None:
         st.sidebar.success("OpenAI File Search 활성")
     else:
         st.sidebar.error("OPENAI_API_KEY 미설정")
-    st.sidebar.caption("OCR: PaddleOCR 한국어 모델")
+    st.sidebar.caption(
+        "OCR: PaddleOCR 한국어 모델 "
+        + ("포함" if use_paddle_ocr else "비포함")
+    )
 
     uploaded = st.file_uploader(
         "배치 입력 파일",
@@ -205,7 +215,11 @@ def main() -> None:
             help="현재 선택한 OpenAI 모델로 FIFO 순서대로 실행합니다.",
             use_container_width=True,
         ):
-            submitted = worker.submit_many(sources, selected_model)
+            submitted = worker.submit_many(
+                sources,
+                selected_model,
+                use_paddle_ocr,
+            )
             st.session_state.batch_submitted_ids = submitted
             st.success(f"{len(submitted)}건을 순차 작업 큐에 등록했습니다.")
 
