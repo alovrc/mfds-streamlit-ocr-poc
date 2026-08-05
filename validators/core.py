@@ -150,7 +150,19 @@ def validate_quotes(stage2_input: dict[str, Any], stage2_output: dict[str, Any])
 
 
 def validate_retrieved_ids(stage2_output: dict[str, Any]) -> None:
-    retrieved = set(stage2_output["file_search"]["retrieved_ids"])
+    file_search = stage2_output["file_search"]
+    retrieved = set(file_search["retrieved_ids"])
+    for citation in file_search.get("citations", []):
+        if not isinstance(citation, dict):
+            continue
+        citation_id = citation.get("record_id")
+        source_id = citation.get("source")
+        file_name = citation.get("file_name")
+        if (
+            file_name
+            and (citation_id in retrieved or source_id in retrieved)
+        ):
+            retrieved.add(file_name)
     for review in stage2_output["violation_reviews"]:
         cited = (
             set(review["rule_ids"])

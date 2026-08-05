@@ -44,3 +44,14 @@ def test_schema_failure_is_not_misclassified_by_allowed_code_text() -> None:
     )
 
     assert failure["error_code"] == "JSON_SCHEMA_INVALID"
+
+
+def test_retrieved_id_failure_is_classified() -> None:
+    failure = failure_record(
+        {"record_id": "T4"},
+        "openai",
+        "stage2",
+        RuntimeError("RETRIEVED_ID_NOT_FOUND: ['food_review.md']"),
+    )
+
+    assert failure["error_code"] == "RETRIEVED_ID_NOT_FOUND"
