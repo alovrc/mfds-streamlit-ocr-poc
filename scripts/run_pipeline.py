@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -449,6 +450,34 @@ def normalize_stage1_food_confidence(
     normalize_stage1_product_type_confidence(output, source)
 
 
+def product_name_matches_source(product_name: str, source_text: str) -> bool:
+    """Match a product name exactly, including parenthesized aliases.
+
+    A bilingual name such as ``앗차차(ATCHACHA)`` may be rendered in the
+    source as two separate mentions.  The composite name is accepted only
+    when the full normalized name is present or every parenthesized part is
+    present; a single loose token is never enough.
+    """
+
+    def compact(value: str) -> str:
+        normalized = unicodedata.normalize("NFKC", value).casefold()
+        return re.sub(r"[\W_]+", "", normalized, flags=re.UNICODE)
+
+    compact_source = compact(source_text)
+    compact_name = compact(product_name)
+    if not compact_name or compact_name in compact_source:
+        return bool(compact_name)
+
+    alias_parts = [
+        compact(part)
+        for part in re.split(r"[()\[\]{}]", product_name)
+        if compact(part)
+    ]
+    return len(alias_parts) > 1 and all(
+        alias in compact_source for alias in alias_parts
+    )
+
+
 def assess_stage2_input_quality(
     source: dict[str, Any],
     product: dict[str, Any],
@@ -468,9 +497,7 @@ def assess_stage2_input_quality(
     detected_name = str(product.get("product_name") or "").strip()
     product_name = supplied_name or detected_name
     if product_name:
-        compact_source = re.sub(r"\s+", "", combined).casefold()
-        compact_name = re.sub(r"\s+", "", product_name).casefold()
-        if compact_name and compact_name not in compact_source:
+        if not product_name_matches_source(product_name, combined):
             codes.append("PRODUCT_NOT_FOUND")
     else:
         codes.append("PRODUCT_NAME_UNCLEAR")

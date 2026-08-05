@@ -6,6 +6,7 @@ from scripts.run_pipeline import (
     normalize_stage2_statuses,
     quarantine_non_advertising_candidates,
     quarantine_possible_sales_candidates,
+    product_name_matches_source,
 )
 from validators.core import normalize_quote_text
 
@@ -90,6 +91,20 @@ def test_incomplete_input_still_requires_stage2_review() -> None:
         "INSUFFICIENT_EVIDENCE"
     )
     assert output["requires_human_review"] is True
+
+
+def test_parenthesized_product_aliases_match_when_separately_present() -> None:
+    assert product_name_matches_source(
+        "\uc575\ucc28\ucc28(ATCHACHA)",
+        "\uc575\ucc28\ucc28\uc758 \uad00\ub828 \uc815\ubcf4\n\nATCHACHA \uc81c\ud488 \uc548\ub0b4",
+    ) is True
+
+
+def test_parenthesized_product_alias_requires_all_parts() -> None:
+    assert product_name_matches_source(
+        "\uc575\ucc28\ucc28(ATCHACHA)",
+        "\uc575\ucc28\ucc28 \uc81c\ud488 \uc548\ub0b4",
+    ) is False
 
 
 def test_possible_sales_context_is_review_not_auto_noncompliant() -> None:
