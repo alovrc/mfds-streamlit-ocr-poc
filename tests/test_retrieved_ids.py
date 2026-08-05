@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from scripts.run_pipeline import quarantine_unretrieved_evidence_ids
+from scripts.run_pipeline import (
+    quarantine_mismatched_evidence_ids,
+    quarantine_unretrieved_evidence_ids,
+)
 from validators.core import validate_retrieved_ids
 
 
@@ -51,4 +54,30 @@ def test_unretrieved_evidence_is_quarantined_for_human_review() -> None:
     assert review["official_evidence_ids"] == []
     assert "RETRIEVED_ID_NOT_FOUND" in review["uncertainty_codes"]
     assert "SEARCH_NO_OFFICIAL_EVIDENCE" in review["uncertainty_codes"]
+    assert output["requires_human_review"] is True
+
+
+def test_evidence_case_mismatch_isolated_without_batch_failure() -> None:
+    output = {
+        "requires_human_review": False,
+        "uncertainty_codes": [],
+        "violation_reviews": [
+            {
+                "status": "HIGH",
+                "risk_score": 10,
+                "official_evidence_ids": ["SHARED-1"],
+                "case_ids": ["SHARED-1"],
+                "uncertainty_codes": [],
+            }
+        ],
+    }
+
+    quarantine_mismatched_evidence_ids(output)
+
+    review = output["violation_reviews"][0]
+    assert review["status"] == "INSUFFICIENT_EVIDENCE"
+    assert review["risk_score"] == 0
+    assert review["official_evidence_ids"] == []
+    assert review["case_ids"] == []
+    assert "EVIDENCE_CASE_TYPE_MISMATCH" in review["uncertainty_codes"]
     assert output["requires_human_review"] is True

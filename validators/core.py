@@ -202,7 +202,17 @@ def validate_risk(stage2_output: dict[str, Any]) -> None:
     for review in reviews:
         if review["status"] == "INSUFFICIENT_EVIDENCE":
             continue
-        if review["status"] != STATUS_BY_SCORE[review["risk_score"]]:
+        status_override = review["status"] == "REVIEW" and bool(
+            set(review.get("uncertainty_codes", []))
+            & {
+                "SEARCH_NO_OFFICIAL_EVIDENCE",
+                "SALES_CONTEXT_UNCERTAIN",
+            }
+        )
+        if (
+            review["status"] != STATUS_BY_SCORE[review["risk_score"]]
+            and not status_override
+        ):
             raise ContractValidationError(
                 f"status/risk mismatch for {review['violation_type']}"
             )

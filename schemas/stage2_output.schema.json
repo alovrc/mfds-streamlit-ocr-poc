@@ -60,6 +60,13 @@
           },
           "product_linked": {
             "type": "boolean"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "GENERAL_HEALTH",
+              "PROHIBITED_CANDIDATE"
+            ]
           }
         },
         "required": [
@@ -147,6 +154,8 @@
                 "INPUT_MISSING_TITLE",
                 "INPUT_MISSING_BODY",
                 "INPUT_TOO_SHORT",
+                "INPUT_INCOMPLETE",
+                "SALES_CONTEXT_UNCERTAIN",
                 "PRODUCT_NOT_FOUND",
                 "PRODUCT_NAME_UNCLEAR",
                 "MULTI_PRODUCT",
@@ -214,6 +223,8 @@
           "INPUT_MISSING_TITLE",
           "INPUT_MISSING_BODY",
           "INPUT_TOO_SHORT",
+          "INPUT_INCOMPLETE",
+          "SALES_CONTEXT_UNCERTAIN",
           "PRODUCT_NOT_FOUND",
           "PRODUCT_NAME_UNCLEAR",
           "MULTI_PRODUCT",

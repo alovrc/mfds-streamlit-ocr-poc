@@ -134,11 +134,9 @@ def quarantine_general_health_expressions(output: dict[str, Any]) -> None:
     if not generic_ids:
         return
 
-    output["problem_expressions"] = [
-        expression
-        for expression in output.get("problem_expressions", [])
-        if str(expression.get("expression_id")) not in generic_ids
-    ]
+    for expression in output.get("problem_expressions", []):
+        if str(expression.get("expression_id")) in generic_ids:
+            expression["classification"] = "GENERAL_HEALTH"
     for review in output.get("violation_reviews", []):
         original_ids = [str(value) for value in review.get("expression_ids", [])]
         remaining_ids = [
@@ -166,9 +164,8 @@ def apply_deterministic_review_scores(
 
     Only a detected candidate with a linked, verbatim expression is scoreable.
     Every active candidate requires a linked verbatim expression and a local
-    Rule ID. Official evidence is supplementary to screening and is shown as
-    a separate review state. Unsupported candidates remain visible as
-    INSUFFICIENT_EVIDENCE with score 0 rather than becoming NO_PROBLEM.
+    Rule ID. Missing official evidence keeps the rule/article candidate visible
+    but forces the final screening state to REVIEW.
     """
 
     rules = rules or load_risk_rules()
@@ -248,7 +245,11 @@ def apply_deterministic_review_scores(
             human_review = True
 
         review["risk_score"] = fixed_score
-        review["status"] = STATUS_BY_SCORE[fixed_score]
+        review["status"] = (
+            "REVIEW"
+            if not review.get("official_evidence_ids")
+            else STATUS_BY_SCORE[fixed_score]
+        )
         review["score_reason"] = (
             f"{review.get('score_reason', '').strip()} "
             f"[결정론적 적용: {rule['risk_name']} "

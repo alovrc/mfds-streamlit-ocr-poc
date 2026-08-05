@@ -1,5 +1,6 @@
 from scripts.run_pipeline import (
     quarantine_general_health_expressions,
+    quarantine_indirect_rule_candidates,
     quarantine_invalid_problem_expressions,
     sanitize_unicode_surrogates,
 )
@@ -92,7 +93,39 @@ def test_generic_health_wording_is_not_a_problem_candidate() -> None:
 
     quarantine_general_health_expressions(output)
 
-    assert output["problem_expressions"] == []
+    assert output["problem_expressions"][0]["classification"] == (
+        "GENERAL_HEALTH"
+    )
+    assert output["violation_reviews"][0]["status"] == "NOT_DETECTED"
+    assert output["violation_reviews"][0]["risk_score"] == 0
+
+
+def test_rule_without_direct_marker_is_not_mapped_to_generic_health_quote() -> None:
+    output = {
+        "problem_expressions": [
+            {
+                "expression_id": "E1",
+                "quote": "면역력에 도움을 줄 수 있습니다",
+                "source_field": "body_text",
+                "product_linked": True,
+                "classification": "PROHIBITED_CANDIDATE",
+            }
+        ],
+        "violation_reviews": [
+            {
+                "violation_type": "DISEASE_PREVENTION_TREATMENT",
+                "status": "HIGH",
+                "risk_score": 10,
+                "expression_ids": ["E1"],
+            }
+        ],
+    }
+
+    quarantine_indirect_rule_candidates(output)
+
+    assert output["problem_expressions"][0]["classification"] == (
+        "GENERAL_HEALTH"
+    )
     assert output["violation_reviews"][0]["status"] == "NOT_DETECTED"
     assert output["violation_reviews"][0]["risk_score"] == 0
 
@@ -144,7 +177,7 @@ def test_high_risk_without_official_evidence_keeps_rule_based_score() -> None:
     apply_deterministic_review_scores(output)
 
     assert output["violation_reviews"][0]["risk_score"] == 10
-    assert output["violation_reviews"][0]["status"] == "HIGH"
+    assert output["violation_reviews"][0]["status"] == "REVIEW"
     assert (
         "SEARCH_NO_OFFICIAL_EVIDENCE"
         in output["violation_reviews"][0]["uncertainty_codes"]

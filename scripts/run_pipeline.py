@@ -65,6 +65,41 @@ RECALL_REVIEW_KEYWORDS = (
     "혈압약",
     "의약품",
 )
+MIN_BODY_CHARS = 20
+MIN_SOURCE_CHARS = 40
+SALES_CONTEXT_UNCERTAINTY_CODE = "SALES_CONTEXT_UNCERTAIN"
+INPUT_INCOMPLETE_CODE = "INPUT_INCOMPLETE"
+DIRECT_RULE_MARKERS = {
+    "DISEASE_PREVENTION_TREATMENT": (
+        "질병", "질환", "당뇨", "암", "고혈압", "고지혈증", "치료",
+        "예방", "완치", "환자", "증상", "혈당을 낮", "혈당조절",
+        "혈당 조절", "혈압을 낮", "염증을 없",
+    ),
+    "MEDICINE_CONFUSION": (
+        "의약품", "혈압약", "당뇨약", "인슐린", "처방", "약 대신",
+    ),
+    "HFF_CONFUSION": (
+        "건강기능식품", "건기식", "영양제", "기능성 제품",
+    ),
+    "UNAPPROVED_FUNCTION": (
+        "미인정", "인정되지 않은", "인정받지 않은", "허가되지 않은",
+        "인증되지 않은",
+    ),
+    "FALSE_EXAGGERATED": (
+        "거짓", "과장", "기적", "즉효", "100%", "완벽", "부작용 없음",
+        "천연 혈압약", "천연 인슐린", "무조건", "확실히",
+    ),
+    "CONSUMER_DECEPTION": (
+        "원재료", "추출물", "성분", "연구", "논문", "체험", "후기",
+        "추천", "전문가", "보증",
+    ),
+    "INGREDIENT_TO_PRODUCT_EFFECT": (
+        "원재료", "추출물", "성분", "안토시아닌", "바나바",
+    ),
+    "TESTIMONIAL_EFFECT": ("체험", "후기", "사용자 경험"),
+    "EXPERT_ENDORSEMENT": ("전문가", "의사", "약사", "추천", "보증"),
+    "COMPARISON_DEFAMATION": ("비교", "최고", "1위", "다른 제품"),
+}
 
 
 def sanitize_unicode_surrogates(value: Any) -> Any:
@@ -414,6 +449,118 @@ def normalize_stage1_food_confidence(
     normalize_stage1_product_type_confidence(output, source)
 
 
+def assess_stage2_input_quality(
+    source: dict[str, Any],
+    product: dict[str, Any],
+) -> list[str]:
+    """Assess source completeness before the stage-2 call."""
+
+    title = str(source.get("title") or "").strip()
+    body = str(source.get("body_text") or "").strip()
+    combined = " ".join(part for part in (title, body) if part)
+    codes: list[str] = []
+    if not body:
+        codes.append("INPUT_MISSING_BODY")
+    if len(body) < MIN_BODY_CHARS or len(combined) < MIN_SOURCE_CHARS:
+        codes.append("INPUT_TOO_SHORT")
+
+    supplied_name = str(source.get("product_name") or "").strip()
+    detected_name = str(product.get("product_name") or "").strip()
+    product_name = supplied_name or detected_name
+    if product_name:
+        compact_source = re.sub(r"\s+", "", combined).casefold()
+        compact_name = re.sub(r"\s+", "", product_name).casefold()
+        if compact_name and compact_name not in compact_source:
+            codes.append("PRODUCT_NOT_FOUND")
+    else:
+        codes.append("PRODUCT_NAME_UNCLEAR")
+
+    if codes and INPUT_INCOMPLETE_CODE not in codes:
+        codes.append(INPUT_INCOMPLETE_CODE)
+    return list(dict.fromkeys(codes))
+
+
+def mark_stage1_input_incomplete(
+    output: dict[str, Any],
+    codes: list[str],
+) -> None:
+    """Propagate pre-stage-2 input quality findings to the audit envelope."""
+
+    record_codes = output.setdefault("uncertainty_codes", [])
+    for code in codes:
+        if code not in record_codes:
+            record_codes.append(code)
+    for product in output.get("products", []):
+        product_codes = product.setdefault("uncertainty_codes", [])
+        for code in codes:
+            if code not in product_codes:
+                product_codes.append(code)
+    output["requires_human_review"] = True
+    reason = str(output.get("short_reason") or "").rstrip()
+    suffix = "입력 원문 사전점검: " + ", ".join(codes)
+    output["short_reason"] = f"{reason}; {suffix}" if reason else suffix
+
+
+def apply_input_incomplete_guardrail(
+    payload: dict[str, Any],
+    output: dict[str, Any],
+) -> None:
+    """Keep stage-2 execution but prevent an incomplete source from passing."""
+
+    codes = [
+        code
+        for code in payload.get("stage1_uncertainty_codes", [])
+        if code in {
+            "INPUT_MISSING_BODY",
+            "INPUT_TOO_SHORT",
+            "PRODUCT_NOT_FOUND",
+            "PRODUCT_NAME_UNCLEAR",
+            INPUT_INCOMPLETE_CODE,
+        }
+    ]
+    if not codes:
+        return
+    output_codes = output.setdefault("uncertainty_codes", [])
+    for code in codes:
+        if code not in output_codes:
+            output_codes.append(code)
+    quarantined = False
+    for review in output.get("violation_reviews", []):
+        score = review.get("risk_score")
+        active = (
+            review.get("status") in {"HIGH", "REVIEW", "LOW"}
+            or (type(score) is int and score > 0)
+        )
+        if not active:
+            continue
+        review["risk_score"] = 0
+        review["status"] = "INSUFFICIENT_EVIDENCE"
+        quarantined = True
+        uncertainty = review.setdefault("uncertainty_codes", [])
+        for code in codes:
+            if code not in uncertainty:
+                uncertainty.append(code)
+        review["score_reason"] = (
+            "2단계 분석은 실행했지만 입력 원문이 불충분하여 "
+            "자동 판정을 보류했습니다."
+        )
+    if not quarantined and output.get("violation_reviews"):
+        review = output["violation_reviews"][0]
+        review["risk_score"] = 0
+        review["status"] = "INSUFFICIENT_EVIDENCE"
+        uncertainty = review.setdefault("uncertainty_codes", [])
+        for code in codes:
+            if code not in uncertainty:
+                uncertainty.append(code)
+        review["score_reason"] = (
+            "2단계 분석은 실행했지만 입력 원문이 불충분하여 "
+            "자동 판정을 보류했습니다."
+        )
+    output["product_overall_risk_score"] = 0
+    output["product_overall_status"] = "INSUFFICIENT_EVIDENCE"
+    output["requires_human_review"] = True
+
+
 def make_stage2_input(
     source: dict[str, Any],
     stage1_output: dict[str, Any],
@@ -467,6 +614,8 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
         )
     quarantine_invalid_problem_expressions(payload, result.data)
     quarantine_general_health_expressions(result.data)
+    quarantine_unlinked_problem_candidates(result.data)
+    quarantine_indirect_rule_candidates(result.data)
     apply_food_hff_confusion_guardrail(payload, result.data)
     if provider == "openai":
         attach_rules_to_tracking(
@@ -474,8 +623,10 @@ def stage2(provider: str, payload: dict[str, Any]) -> dict[str, Any]:
             payload["file_search_store_alias"],
         )
     quarantine_unretrieved_evidence_ids(result.data)
+    quarantine_mismatched_evidence_ids(result.data)
     apply_deterministic_review_scores(result.data)
     normalize_stage2_statuses(result.data)
+    apply_input_incomplete_guardrail(payload, result.data)
     validate_stage2(payload, result.data)
     return result.data
 
@@ -560,6 +711,40 @@ def quarantine_unretrieved_evidence_ids(output: dict[str, Any]) -> None:
         output["requires_human_review"] = True
 
 
+def quarantine_mismatched_evidence_ids(output: dict[str, Any]) -> None:
+    """Isolate official/case ID overlap to this product review only."""
+
+    output_uncertainty = output.setdefault("uncertainty_codes", [])
+    for review in output.get("violation_reviews", []):
+        if not isinstance(review, dict):
+            continue
+        official = set(review.get("official_evidence_ids", []))
+        cases = set(review.get("case_ids", []))
+        overlap = official & cases
+        if not overlap:
+            continue
+        review["official_evidence_ids"] = [
+            item for item in review.get("official_evidence_ids", [])
+            if item not in overlap
+        ]
+        review["case_ids"] = [
+            item for item in review.get("case_ids", [])
+            if item not in overlap
+        ]
+        uncertainty = review.setdefault("uncertainty_codes", [])
+        if "EVIDENCE_CASE_TYPE_MISMATCH" not in uncertainty:
+            uncertainty.append("EVIDENCE_CASE_TYPE_MISMATCH")
+        if "EVIDENCE_CASE_TYPE_MISMATCH" not in output_uncertainty:
+            output_uncertainty.append("EVIDENCE_CASE_TYPE_MISMATCH")
+        review["risk_score"] = 0
+        review["status"] = "INSUFFICIENT_EVIDENCE"
+        review["score_reason"] = (
+            "공식근거와 적발사례 ID가 중복되어 해당 제품 후보만 "
+            "근거 불충분으로 격리했습니다. 전체 배치는 계속합니다."
+        )
+        output["requires_human_review"] = True
+
+
 def quarantine_invalid_problem_expressions(
     payload: dict[str, Any],
     output: dict[str, Any],
@@ -582,9 +767,21 @@ def quarantine_invalid_problem_expressions(
             invalid_ids.add(str(expression.get("expression_id") or ""))
 
     if not invalid_ids:
+        for expression in valid_expressions:
+            if (
+                expression.get("product_linked") is True
+                and not expression.get("classification")
+            ):
+                expression["classification"] = "PROHIBITED_CANDIDATE"
         return
 
     output["problem_expressions"] = valid_expressions
+    for expression in valid_expressions:
+        if (
+            expression.get("product_linked") is True
+            and not expression.get("classification")
+        ):
+            expression["classification"] = "PROHIBITED_CANDIDATE"
     product_uncertainty = output.setdefault("uncertainty_codes", [])
     if "QUOTE_NOT_IN_SOURCE" not in product_uncertainty:
         product_uncertainty.append("QUOTE_NOT_IN_SOURCE")
@@ -610,6 +807,90 @@ def quarantine_invalid_problem_expressions(
                 "해당 후보를 근거 불충분으로 격리했습니다."
             )
     output["requires_human_review"] = True
+
+
+def quarantine_unlinked_problem_candidates(output: dict[str, Any]) -> None:
+    """Require each active candidate to point to a linked expression."""
+
+    linked_ids = _linked_expression_ids(output)
+    for review in output.get("violation_reviews", []):
+        if not isinstance(review, dict):
+            continue
+        original_ids = [str(item) for item in review.get("expression_ids", [])]
+        remaining_ids = [item for item in original_ids if item in linked_ids]
+        if remaining_ids == original_ids:
+            continue
+        review["expression_ids"] = list(dict.fromkeys(remaining_ids))
+        if remaining_ids:
+            continue
+        score = review.get("risk_score")
+        candidate = (
+            review.get("status") in {"HIGH", "REVIEW", "LOW"}
+            or (type(score) is int and score > 0)
+        )
+        if candidate:
+            review["risk_score"] = 0
+            review["status"] = "INSUFFICIENT_EVIDENCE"
+            review["score_reason"] = (
+                "제품과 직접 연결된 원문 인용이 없어 후보를 "
+                "근거 불충분으로 격리했습니다."
+            )
+            output["requires_human_review"] = True
+
+
+def _linked_expression_ids(output: dict[str, Any]) -> set[str]:
+    return {
+        str(expression.get("expression_id"))
+        for expression in output.get("problem_expressions", [])
+        if expression.get("expression_id")
+        and expression.get("product_linked") is True
+    }
+
+
+def quarantine_indirect_rule_candidates(output: dict[str, Any]) -> None:
+    """Keep only violation types supported by markers in their own quote."""
+
+    expressions = {
+        str(item.get("expression_id")): item
+        for item in output.get("problem_expressions", [])
+        if item.get("expression_id")
+    }
+    direct_ids_by_expression: dict[str, set[str]] = {}
+    for review in output.get("violation_reviews", []):
+        violation_type = str(review.get("violation_type") or "")
+        markers = DIRECT_RULE_MARKERS.get(violation_type, ())
+        expression_ids = []
+        for expression_id in review.get("expression_ids", []):
+            expression = expressions.get(str(expression_id), {})
+            quote = str(expression.get("quote") or "")
+            if expression.get("product_linked") is True and any(
+                marker in quote for marker in markers
+            ):
+                expression_ids.append(str(expression_id))
+                direct_ids_by_expression.setdefault(
+                    str(expression_id), set()
+                ).add(violation_type)
+        original_ids = [str(item) for item in review.get("expression_ids", [])]
+        if expression_ids == original_ids:
+            continue
+        review["expression_ids"] = list(dict.fromkeys(expression_ids))
+        if expression_ids:
+            continue
+        score = review.get("risk_score")
+        candidate = (
+            review.get("status") in {"HIGH", "REVIEW", "LOW"}
+            or (type(score) is int and score > 0)
+        )
+        if candidate:
+            review["risk_score"] = 0
+            review["status"] = "NOT_DETECTED"
+            review["score_reason"] = (
+                "인용문에 해당 위반유형의 구체적 금지 표지가 없어 "
+                "일반 건강 표현으로 분류했습니다."
+            )
+    for expression_id, expression in expressions.items():
+        if not direct_ids_by_expression.get(expression_id):
+            expression["classification"] = "GENERAL_HEALTH"
 
 
 def apply_food_hff_confusion_guardrail(
@@ -731,12 +1012,20 @@ def normalize_stage2_statuses(output: dict[str, Any]) -> None:
     reviews = output.get("violation_reviews", [])
     for review in reviews:
         score = review.get("risk_score")
+        uncertainty_codes = set(review.get("uncertainty_codes", []))
         if (
             review.get("status") != "INSUFFICIENT_EVIDENCE"
             and type(score) is int
             and score in STATUS_BY_SCORE
         ):
-            review["status"] = STATUS_BY_SCORE[score]
+            review["status"] = (
+                "REVIEW"
+                if uncertainty_codes & {
+                    "SEARCH_NO_OFFICIAL_EVIDENCE",
+                    SALES_CONTEXT_UNCERTAINTY_CODE,
+                }
+                else STATUS_BY_SCORE[score]
+            )
 
     scores = [
         review.get("risk_score")
@@ -751,8 +1040,52 @@ def normalize_stage2_statuses(output: dict[str, Any]) -> None:
         for review in reviews
     ):
         output["product_overall_status"] = "INSUFFICIENT_EVIDENCE"
+    elif any(
+        review.get("status") == "REVIEW"
+        and set(review.get("uncertainty_codes", []))
+        & {
+            "SEARCH_NO_OFFICIAL_EVIDENCE",
+            SALES_CONTEXT_UNCERTAINTY_CODE,
+        }
+        for review in reviews
+    ):
+        output["product_overall_status"] = "REVIEW"
     else:
         output["product_overall_status"] = STATUS_BY_SCORE[expected]
+
+
+def quarantine_possible_sales_candidates(
+    stage1_output: dict[str, Any],
+    product_results: list[dict[str, Any]],
+) -> None:
+    """Keep POSSIBLE sales context as a human-review candidate only."""
+
+    if stage1_output.get("sales_ad_context") != "POSSIBLE":
+        return
+    for product in product_results:
+        changed = False
+        product_codes = product.setdefault("uncertainty_codes", [])
+        if SALES_CONTEXT_UNCERTAINTY_CODE not in product_codes:
+            product_codes.append(SALES_CONTEXT_UNCERTAINTY_CODE)
+        for review in product.get("violation_reviews", []):
+            score = review.get("risk_score")
+            active = (
+                review.get("status") in {"HIGH", "REVIEW", "LOW"}
+                or (type(score) is int and score > 0)
+            )
+            if not active:
+                continue
+            uncertainty = review.setdefault("uncertainty_codes", [])
+            if SALES_CONTEXT_UNCERTAINTY_CODE not in uncertainty:
+                uncertainty.append(SALES_CONTEXT_UNCERTAINTY_CODE)
+            review["status"] = "REVIEW"
+            review["score_reason"] = (
+                f"{str(review.get('score_reason') or '').strip()} "
+                "[판매성향 POSSIBLE: 자동 부적합이 아닌 담당자 검토]"
+            ).strip()
+            changed = True
+        if changed:
+            normalize_stage2_statuses(product)
 
 
 def quarantine_non_advertising_candidates(
@@ -792,6 +1125,7 @@ def aggregate(
     product_results: list[dict[str, Any]],
 ) -> dict[str, Any]:
     quarantine_non_advertising_candidates(stage1_output, product_results)
+    quarantine_possible_sales_candidates(stage1_output, product_results)
     deterministic_aggregation = build_deterministic_aggregation(
         product_results
     )
@@ -830,6 +1164,14 @@ def run(provider: str, source: dict[str, Any]) -> dict[str, Any]:
     for route in first["routes"]:
         if route["stage2_route"] == "NO_STAGE2":
             continue
+        product = next(
+            item
+            for item in first["products"]
+            if item["product_index"] == route["product_index"]
+        )
+        input_codes = assess_stage2_input_quality(source, product)
+        if input_codes:
+            mark_stage1_input_incomplete(first, input_codes)
         payload = make_stage2_input(source, first, route["product_index"])
         results.append(stage2(provider, payload))
     return aggregate(source, first, results)
@@ -862,6 +1204,10 @@ def failure_record(
         ("UNKNOWN_FILE_SEARCH_STORE_ALIAS", "FILE_SEARCH_STORE_UNAVAILABLE"),
         ("FILE_SEARCH_STORE_UNAVAILABLE", "FILE_SEARCH_STORE_UNAVAILABLE"),
         ("RETRIEVED_ID_NOT_FOUND", "RETRIEVED_ID_NOT_FOUND"),
+        (
+            "EVIDENCE_CASE_TYPE_MISMATCH",
+            "EVIDENCE_CASE_TYPE_MISMATCH",
+        ),
         ("JSON_SCHEMA_INVALID", "JSON_SCHEMA_INVALID"),
         ("RISK_SCORE_INVALID", "RISK_SCORE_INVALID"),
         ("RISK_AGGREGATION_MISMATCH", "RISK_AGGREGATION_MISMATCH"),

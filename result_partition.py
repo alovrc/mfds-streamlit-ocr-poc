@@ -23,7 +23,17 @@ VIOLATION_LABELS = {
 ACTIVE_STATUSES = {"HIGH", "REVIEW", "LOW"}
 
 
-def _screening_decision(status: str | None) -> str:
+def _screening_decision(
+    status: str | None,
+    uncertainty_codes: list[str] | None = None,
+) -> str:
+    if set(uncertainty_codes or []) & {
+        "SEARCH_NO_OFFICIAL_EVIDENCE",
+        "SALES_CONTEXT_UNCERTAIN",
+        "EVIDENCE_CASE_TYPE_MISMATCH",
+        "INPUT_INCOMPLETE",
+    }:
+        return "REVIEW"
     if status in ACTIVE_STATUSES:
         return "PROBLEM_CANDIDATE"
     if status == "INSUFFICIENT_EVIDENCE":
@@ -166,7 +176,10 @@ def _candidate(review: dict[str, Any]) -> dict[str, Any]:
             str(review.get("violation_type")),
         ),
         "status": review.get("status"),
-        "screening_decision": _screening_decision(review.get("status")),
+        "screening_decision": _screening_decision(
+            review.get("status"),
+            list(review.get("uncertainty_codes", [])),
+        ),
         "risk_score": review.get("risk_score"),
         "expression_ids": expression_ids,
         "problem_expressions": [
@@ -175,6 +188,9 @@ def _candidate(review: dict[str, Any]) -> dict[str, Any]:
                 "quote": expressions.get(expression_id, {}).get("quote"),
                 "source_field": expressions.get(expression_id, {}).get(
                     "source_field"
+                ),
+                "classification": expressions.get(expression_id, {}).get(
+                    "classification"
                 ),
             }
             for expression_id in expression_ids
