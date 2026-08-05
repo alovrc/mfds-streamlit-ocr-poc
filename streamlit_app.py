@@ -40,13 +40,11 @@ OPENAI_MODEL_OPTIONS = (
 def render_openai_model_selector() -> str:
     """Let the operator choose the OpenAI model without editing source code."""
 
-    configured = str(os.getenv("OPENAI_MODEL", "")).strip()
-    default_model = configured if configured in OPENAI_MODEL_OPTIONS else OPENAI_MODEL_OPTIONS[0]
     return st.sidebar.selectbox(
         "OpenAI 모델",
         OPENAI_MODEL_OPTIONS,
-        index=OPENAI_MODEL_OPTIONS.index(default_model),
-        key="openai_model_selector",
+        index=0,
+        key="openai_model_selector_luna_default",
         help="다음 OpenAI 실행부터 선택한 모델이 적용됩니다.",
     )
 
